@@ -1,11 +1,11 @@
-import { createHash } from 'node:crypto';
+import { createHash } from "node:crypto";
 import type {
   EvaluationContext,
   JsonValue,
   Logger,
   Provider,
   ResolutionDetails,
-} from '@openfeature/server-sdk';
+} from "@openfeature/server-sdk";
 import {
   FlagNotFoundError,
   GeneralError,
@@ -13,22 +13,32 @@ import {
   ProviderEvents,
   StandardResolutionReasons,
   TypeMismatchError,
-} from '@openfeature/server-sdk';
-import { NotifyListener } from './listener.ts';
-import type { FlagData, PostgresProviderOptions, RolloutEntry } from './types.ts';
-import { DEFAULT_CHANNEL, DEFAULT_SCHEMA, DEFAULT_SYNC_INTERVAL_MS } from './types.ts';
+} from "@openfeature/server-sdk";
+import { NotifyListener } from "./listener.ts";
+import type {
+  FlagData,
+  PostgresProviderOptions,
+  RolloutEntry,
+} from "./types.ts";
+import {
+  DEFAULT_CHANNEL,
+  DEFAULT_SCHEMA,
+  DEFAULT_SYNC_INTERVAL_MS,
+} from "./types.ts";
 
 export class PostgresProvider implements Provider {
-  readonly metadata = { name: 'openfeature-provider-postgres' };
-  readonly runsOn = 'server' as const;
+  readonly metadata = { name: "openfeature-provider-postgres" };
+  readonly runsOn = "server" as const;
   events = new OpenFeatureEventEmitter();
 
   private cache = new Map<string, FlagData>();
-  private readonly pool: PostgresProviderOptions['pool'];
+  private readonly pool: PostgresProviderOptions["pool"];
   private readonly schema: string;
   private readonly channelName: string;
   private readonly syncIntervalMs: number;
-  private readonly listenerOptions: ConstructorParameters<typeof NotifyListener>[0];
+  private readonly listenerOptions: ConstructorParameters<
+    typeof NotifyListener
+  >[0];
   private listener: NotifyListener | null = null;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private disposed = false;
@@ -41,7 +51,7 @@ export class PostgresProvider implements Provider {
     this.listenerOptions = {
       pool: this.pool,
       channelName: this.channelName,
-      ...('createClient' in options ? { createClient: (options as any).createClient } : {}),
+      ...(options.createClient ? { createClient: options.createClient } : {}),
     };
   }
 
@@ -97,7 +107,7 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<boolean>> {
-    return this.resolve<boolean>(flagKey, defaultValue, 'boolean', context);
+    return this.resolve<boolean>(flagKey, defaultValue, "boolean", context);
   }
 
   async resolveStringEvaluation(
@@ -106,7 +116,7 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<string>> {
-    return this.resolve<string>(flagKey, defaultValue, 'string', context);
+    return this.resolve<string>(flagKey, defaultValue, "string", context);
   }
 
   async resolveNumberEvaluation(
@@ -115,7 +125,7 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<number>> {
-    return this.resolve<number>(flagKey, defaultValue, 'number', context);
+    return this.resolve<number>(flagKey, defaultValue, "number", context);
   }
 
   async resolveObjectEvaluation<T extends JsonValue>(
@@ -124,20 +134,23 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<T>> {
-    return this.resolve<T>(flagKey, defaultValue, 'object', context);
+    return this.resolve<T>(flagKey, defaultValue, "object", context);
   }
 
   private resolve<T>(
     flagKey: string,
     defaultValue: T,
-    expectedType: FlagData['flagType'],
+    expectedType: FlagData["flagType"],
     context: EvaluationContext,
   ): ResolutionDetails<T> {
     const flag = this.cache.get(flagKey);
     if (!flag) throw new FlagNotFoundError(`Flag "${flagKey}" not found`);
 
     if (!flag.enabled) {
-      return { value: defaultValue, reason: StandardResolutionReasons.DISABLED };
+      return {
+        value: defaultValue,
+        reason: StandardResolutionReasons.DISABLED,
+      };
     }
 
     if (flag.flagType !== expectedType) {
@@ -151,7 +164,7 @@ export class PostgresProvider implements Provider {
 
     if (flag.rollout && context.targetingKey) {
       chosenVariant = this.pickRolloutVariant(flag, context.targetingKey);
-      reason = 'SPLIT';
+      reason = "SPLIT";
     } else {
       chosenVariant = flag.defaultVariant;
       reason = StandardResolutionReasons.STATIC;
@@ -159,18 +172,22 @@ export class PostgresProvider implements Provider {
 
     const value = flag.variants.get(chosenVariant);
     if (value === undefined) {
-      throw new GeneralError(`Variant "${chosenVariant}" not found for flag "${flagKey}"`);
+      throw new GeneralError(
+        `Variant "${chosenVariant}" not found for flag "${flagKey}"`,
+      );
     }
 
     return { value: value as T, variant: chosenVariant, reason };
   }
 
   private pickRolloutVariant(flag: FlagData, targetingKey: string): string {
-    const hash = createHash('sha256').update(targetingKey + flag.flagKey).digest();
+    const hash = createHash("sha256")
+      .update(targetingKey + flag.flagKey)
+      .digest();
     const bucket = hash.readUInt32BE(0) % 100;
 
     let cumulative = 0;
-    for (const entry of flag.rollout!) {
+    for (const entry of flag.rollout ?? []) {
       cumulative += entry.percentage;
       if (bucket < cumulative) {
         return entry.variant;
@@ -218,8 +235,13 @@ export class PostgresProvider implements Provider {
         if (row.percentage != null) {
           if (!flag.rollout) flag.rollout = [];
           // Avoid duplicate rollout entries when JOIN produces multiple rows
-          if (!flag.rollout.some((r: RolloutEntry) => r.variant === row.variant)) {
-            flag.rollout.push({ variant: row.variant, percentage: row.percentage });
+          if (
+            !flag.rollout.some((r: RolloutEntry) => r.variant === row.variant)
+          ) {
+            flag.rollout.push({
+              variant: row.variant,
+              percentage: row.percentage,
+            });
           }
         }
       }
@@ -233,7 +255,10 @@ export class PostgresProvider implements Provider {
         }
         // Warn if rollout percentages exceed 100
         if (flag.rollout) {
-          const total = flag.rollout.reduce((sum: number, r: RolloutEntry) => sum + r.percentage, 0);
+          const total = flag.rollout.reduce(
+            (sum: number, r: RolloutEntry) => sum + r.percentage,
+            0,
+          );
           if (total > 100) {
             console.warn(
               `Flag "${flag.flagKey}": rollout percentages sum to ${total} (>100)`,
@@ -244,11 +269,11 @@ export class PostgresProvider implements Provider {
 
       this.cache = grouped;
     } catch (err) {
-      console.error('Failed to sync flag cache:', err);
+      console.error("Failed to sync flag cache:", err);
     }
   }
 }
 
 function quoteIdent(ident: string): string {
-  return '"' + ident.replace(/"/g, '""') + '"';
+  return `"${ident.replace(/"/g, '""')}"`;
 }

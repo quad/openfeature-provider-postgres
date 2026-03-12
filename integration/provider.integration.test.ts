@@ -1,15 +1,18 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { PGlite } from '@electric-sql/pglite';
-import { Client, Pool } from '@middle-management/pglite-pg-adapter';
-import { OpenFeature, ProviderEvents } from '@openfeature/server-sdk';
-import { PostgresProvider } from '../src/index.ts';
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { describe, it } from "node:test";
+import { PGlite } from "@electric-sql/pglite";
+import { Client, Pool } from "@middle-management/pglite-pg-adapter";
+import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
+import { PostgresProvider } from "../src/index.ts";
 
-const migration = readFileSync(new URL('../migration.sql', import.meta.url), 'utf8');
+const migration = readFileSync(
+  new URL("../migration.sql", import.meta.url),
+  "utf8",
+);
 
-describe('Integration: full lifecycle', () => {
-  it('initialize → insert → ConfigurationChanged → evaluate', async () => {
+describe("Integration: full lifecycle", () => {
+  it("initialize → insert → ConfigurationChanged → evaluate", async () => {
     const pglite = new PGlite();
     const pool = new Pool({ pglite });
     await pglite.exec(migration);
@@ -31,15 +34,15 @@ describe('Integration: full lifecycle', () => {
       createClient: () => new Client({ pglite }) as any,
     } as any);
 
-    await OpenFeature.setProviderAndWait('test', provider);
-    const client = OpenFeature.getClient('test');
+    await OpenFeature.setProviderAndWait("test", provider);
+    const client = OpenFeature.getClient("test");
 
     // Evaluate initial value
-    const initial = await client.getBooleanValue('my-flag', false);
+    const initial = await client.getBooleanValue("my-flag", false);
     assert.equal(initial, true);
 
     // Listen for configuration change
-    const changed = new Promise<void>(resolve => {
+    const changed = new Promise<void>((resolve) => {
       client.addHandler(ProviderEvents.ConfigurationChanged, () => resolve());
     });
 
@@ -52,7 +55,7 @@ describe('Integration: full lifecycle', () => {
     await changed;
 
     // Evaluate updated value
-    const updated = await client.getBooleanValue('my-flag', true);
+    const updated = await client.getBooleanValue("my-flag", true);
     assert.equal(updated, false);
 
     // Cleanup
@@ -61,7 +64,7 @@ describe('Integration: full lifecycle', () => {
     await pglite.close();
   });
 
-  it('AsyncDisposable cleanup is idempotent', async () => {
+  it("AsyncDisposable cleanup is idempotent", async () => {
     const pglite = new PGlite();
     const pool = new Pool({ pglite });
     await pglite.exec(migration);

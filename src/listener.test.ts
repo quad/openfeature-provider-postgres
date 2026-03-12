@@ -1,10 +1,10 @@
-import { describe, it, after } from 'node:test';
-import assert from 'node:assert/strict';
-import { PGlite } from '@electric-sql/pglite';
-import { Client, Pool } from '@middle-management/pglite-pg-adapter';
-import { NotifyListener } from './listener.ts';
+import assert from "node:assert/strict";
+import { after, describe, it } from "node:test";
+import { PGlite } from "@electric-sql/pglite";
+import { Client, Pool } from "@middle-management/pglite-pg-adapter";
+import { NotifyListener } from "./listener.ts";
 
-describe('NotifyListener', () => {
+describe("NotifyListener", () => {
   let pglite: PGlite;
   let pool: Pool;
 
@@ -13,13 +13,13 @@ describe('NotifyListener', () => {
     await pglite?.close();
   });
 
-  it('receives notifications via LISTEN/NOTIFY', async () => {
+  it("receives notifications via LISTEN/NOTIFY", async () => {
     pglite = new PGlite();
     pool = new Pool({ pglite });
 
     const listener = new NotifyListener({
       pool: pool as any,
-      channelName: 'flag_change',
+      channelName: "flag_change",
       createClient: () => new Client({ pglite }) as any,
     });
 
@@ -31,21 +31,24 @@ describe('NotifyListener', () => {
     });
 
     // Send a notification via the pool (separate connection)
-    await pool.query('NOTIFY flag_change');
-    await new Promise(r => setTimeout(r, 100));
+    await pool.query("NOTIFY flag_change");
+    await new Promise((r) => setTimeout(r, 100));
 
-    assert.ok(notifications.length >= 1, 'should have received at least one notification');
+    assert.ok(
+      notifications.length >= 1,
+      "should have received at least one notification",
+    );
 
     await listener.stop();
   });
 
-  it('stops cleanly', async () => {
+  it("stops cleanly", async () => {
     pglite = new PGlite();
     pool = new Pool({ pglite });
 
     const listener = new NotifyListener({
       pool: pool as any,
-      channelName: 'flag_change',
+      channelName: "flag_change",
       createClient: () => new Client({ pglite }) as any,
     });
 

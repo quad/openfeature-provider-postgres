@@ -1,17 +1,19 @@
-import { describe, it, beforeEach, afterEach } from 'node:test';
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { PGlite } from '@electric-sql/pglite';
-import { Client, Pool } from '@middle-management/pglite-pg-adapter';
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, it } from "node:test";
+import { PGlite } from "@electric-sql/pglite";
+import { Client, Pool } from "@middle-management/pglite-pg-adapter";
 import {
-  ErrorCode,
   FlagNotFoundError,
   StandardResolutionReasons,
   TypeMismatchError,
-} from '@openfeature/server-sdk';
-import { PostgresProvider } from './provider.ts';
+} from "@openfeature/server-sdk";
+import { PostgresProvider } from "./provider.ts";
 
-const migration = readFileSync(new URL('../migration.sql', import.meta.url), 'utf8');
+const migration = readFileSync(
+  new URL("../migration.sql", import.meta.url),
+  "utf8",
+);
 
 async function setup() {
   const pglite = new PGlite();
@@ -27,7 +29,7 @@ async function setup() {
   return { pglite, pool, provider };
 }
 
-describe('PostgresProvider', () => {
+describe("PostgresProvider", () => {
   let pglite: PGlite;
   let pool: Pool;
   let provider: PostgresProvider;
@@ -42,8 +44,8 @@ describe('PostgresProvider', () => {
     await pglite.close();
   });
 
-  describe('flag resolution', () => {
-    it('resolves boolean flags', async () => {
+  describe("flag resolution", () => {
+    it("resolves boolean flags", async () => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
         VALUES ('bool-flag', 'boolean', 'on')
@@ -55,13 +57,18 @@ describe('PostgresProvider', () => {
 
       await provider.initialize();
 
-      const result = await provider.resolveBooleanEvaluation('bool-flag', false, {}, console as any);
+      const result = await provider.resolveBooleanEvaluation(
+        "bool-flag",
+        false,
+        {},
+        console as any,
+      );
       assert.equal(result.value, true);
-      assert.equal(result.variant, 'on');
+      assert.equal(result.variant, "on");
       assert.equal(result.reason, StandardResolutionReasons.STATIC);
     });
 
-    it('resolves string flags', async () => {
+    it("resolves string flags", async () => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
         VALUES ('greeting', 'string', 'hello')
@@ -73,12 +80,17 @@ describe('PostgresProvider', () => {
 
       await provider.initialize();
 
-      const result = await provider.resolveStringEvaluation('greeting', '', {}, console as any);
-      assert.equal(result.value, 'Hello, world!');
-      assert.equal(result.variant, 'hello');
+      const result = await provider.resolveStringEvaluation(
+        "greeting",
+        "",
+        {},
+        console as any,
+      );
+      assert.equal(result.value, "Hello, world!");
+      assert.equal(result.variant, "hello");
     });
 
-    it('resolves number flags', async () => {
+    it("resolves number flags", async () => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
         VALUES ('rate-limit', 'number', 'default')
@@ -90,12 +102,17 @@ describe('PostgresProvider', () => {
 
       await provider.initialize();
 
-      const result = await provider.resolveNumberEvaluation('rate-limit', 0, {}, console as any);
+      const result = await provider.resolveNumberEvaluation(
+        "rate-limit",
+        0,
+        {},
+        console as any,
+      );
       assert.equal(result.value, 100);
-      assert.equal(result.variant, 'default');
+      assert.equal(result.variant, "default");
     });
 
-    it('resolves object flags', async () => {
+    it("resolves object flags", async () => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
         VALUES ('config', 'object', 'v1')
@@ -107,12 +124,17 @@ describe('PostgresProvider', () => {
 
       await provider.initialize();
 
-      const result = await provider.resolveObjectEvaluation('config', {}, {}, console as any);
-      assert.deepEqual(result.value, { theme: 'dark', limit: 10 });
-      assert.equal(result.variant, 'v1');
+      const result = await provider.resolveObjectEvaluation(
+        "config",
+        {},
+        {},
+        console as any,
+      );
+      assert.deepEqual(result.value, { theme: "dark", limit: 10 });
+      assert.equal(result.variant, "v1");
     });
 
-    it('resolves array values under object type', async () => {
+    it("resolves array values under object type", async () => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
         VALUES ('tags', 'object', 'default')
@@ -124,22 +146,33 @@ describe('PostgresProvider', () => {
 
       await provider.initialize();
 
-      const result = await provider.resolveObjectEvaluation('tags', [], {}, console as any);
-      assert.deepEqual(result.value, ['a', 'b', 'c']);
+      const result = await provider.resolveObjectEvaluation(
+        "tags",
+        [],
+        {},
+        console as any,
+      );
+      assert.deepEqual(result.value, ["a", "b", "c"]);
     });
   });
 
-  describe('error handling', () => {
-    it('throws FlagNotFoundError for missing flags', async () => {
+  describe("error handling", () => {
+    it("throws FlagNotFoundError for missing flags", async () => {
       await provider.initialize();
 
       await assert.rejects(
-        () => provider.resolveBooleanEvaluation('nonexistent', false, {}, console as any),
+        () =>
+          provider.resolveBooleanEvaluation(
+            "nonexistent",
+            false,
+            {},
+            console as any,
+          ),
         FlagNotFoundError,
       );
     });
 
-    it('throws TypeMismatchError for wrong type', async () => {
+    it("throws TypeMismatchError for wrong type", async () => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
         VALUES ('bool-flag', 'boolean', 'on')
@@ -152,14 +185,15 @@ describe('PostgresProvider', () => {
       await provider.initialize();
 
       await assert.rejects(
-        () => provider.resolveStringEvaluation('bool-flag', '', {}, console as any),
+        () =>
+          provider.resolveStringEvaluation("bool-flag", "", {}, console as any),
         TypeMismatchError,
       );
     });
   });
 
-  describe('disabled flags', () => {
-    it('returns default value with DISABLED reason', async () => {
+  describe("disabled flags", () => {
+    it("returns default value with DISABLED reason", async () => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant, enabled)
         VALUES ('disabled-flag', 'boolean', 'on', false)
@@ -171,14 +205,19 @@ describe('PostgresProvider', () => {
 
       await provider.initialize();
 
-      const result = await provider.resolveBooleanEvaluation('disabled-flag', false, {}, console as any);
+      const result = await provider.resolveBooleanEvaluation(
+        "disabled-flag",
+        false,
+        {},
+        console as any,
+      );
       assert.equal(result.value, false); // default value, not stored value
       assert.equal(result.reason, StandardResolutionReasons.DISABLED);
     });
   });
 
-  describe('rollouts', () => {
-    it('returns SPLIT reason with targeting key', async () => {
+  describe("rollouts", () => {
+    it("returns SPLIT reason with targeting key", async () => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
         VALUES ('ab-test', 'string', 'control')
@@ -196,13 +235,16 @@ describe('PostgresProvider', () => {
       await provider.initialize();
 
       const result = await provider.resolveStringEvaluation(
-        'ab-test', '', { targetingKey: 'user-123' }, console as any,
+        "ab-test",
+        "",
+        { targetingKey: "user-123" },
+        console as any,
       );
-      assert.equal(result.reason, 'SPLIT');
-      assert.ok(['control', 'treatment'].includes(result.variant!));
+      assert.equal(result.reason, "SPLIT");
+      assert.ok(["control", "treatment"].includes(result.variant ?? ""));
     });
 
-    it('is deterministic for the same targeting key', async () => {
+    it("is deterministic for the same targeting key", async () => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
         VALUES ('ab-test', 'string', 'control')
@@ -222,14 +264,17 @@ describe('PostgresProvider', () => {
       const results = new Set<string>();
       for (let i = 0; i < 10; i++) {
         const r = await provider.resolveStringEvaluation(
-          'ab-test', '', { targetingKey: 'user-123' }, console as any,
+          "ab-test",
+          "",
+          { targetingKey: "user-123" },
+          console as any,
         );
-        results.add(r.variant!);
+        results.add(r.variant ?? "");
       }
-      assert.equal(results.size, 1, 'should be deterministic');
+      assert.equal(results.size, 1, "should be deterministic");
     });
 
-    it('falls back to default variant without targeting key', async () => {
+    it("falls back to default variant without targeting key", async () => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
         VALUES ('ab-test', 'string', 'control')
@@ -247,22 +292,26 @@ describe('PostgresProvider', () => {
       await provider.initialize();
 
       const result = await provider.resolveStringEvaluation(
-        'ab-test', '', {}, console as any,
+        "ab-test",
+        "",
+        {},
+        console as any,
       );
-      assert.equal(result.variant, 'control');
+      assert.equal(result.variant, "control");
       assert.equal(result.reason, StandardResolutionReasons.STATIC);
     });
   });
 
-  describe('DB constraint enforcement', () => {
-    it('rejects wrong-typed JSONB values', async () => {
+  describe("DB constraint enforcement", () => {
+    it("rejects wrong-typed JSONB values", async () => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
         VALUES ('bool-flag', 'boolean', 'on')
       `);
 
       await assert.rejects(
-        () => pool.query(`
+        () =>
+          pool.query(`
           INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
           VALUES ('bool-flag', 'on', 'boolean', '"not-a-boolean"')
         `),
@@ -271,8 +320,8 @@ describe('PostgresProvider', () => {
     });
   });
 
-  describe('validation warnings', () => {
-    it('warns when default_variant references nonexistent variant', async () => {
+  describe("validation warnings", () => {
+    it("warns when default_variant references nonexistent variant", async () => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
         VALUES ('bad-default', 'boolean', 'nonexistent')
@@ -292,7 +341,7 @@ describe('PostgresProvider', () => {
       }
 
       assert.ok(
-        warnings.some(w => w.includes('nonexistent')),
+        warnings.some((w) => w.includes("nonexistent")),
         `Expected warning about nonexistent variant, got: ${warnings}`,
       );
     });

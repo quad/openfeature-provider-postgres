@@ -1,2 +1,2 @@
-export { PostgresProvider } from './provider.ts';
-export type { PostgresProviderOptions, FlagData } from './types.ts';
+export { PostgresProvider } from "./provider.ts";
+export type { FlagData, PostgresProviderOptions } from "./types.ts";

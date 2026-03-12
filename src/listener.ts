@@ -1,5 +1,5 @@
-import pg from 'pg';
-import { backOff } from 'exponential-backoff';
+import { backOff } from "exponential-backoff";
+import pg from "pg";
 
 export interface NotifyListenerCallbacks {
   onNotification: () => void;
@@ -24,10 +24,20 @@ export class NotifyListener {
 
   constructor(options: NotifyListenerOptions) {
     this.channelName = options.channelName;
-    this.createClient = options.createClient ?? (() => {
-      const { host, port, database, user, password, ssl } = options.pool.options as unknown as Record<string, unknown>;
-      return new pg.Client({ host, port, database, user, password, ssl } as pg.ClientConfig);
-    });
+    this.createClient =
+      options.createClient ??
+      (() => {
+        const { host, port, database, user, password, ssl } = options.pool
+          .options as unknown as Record<string, unknown>;
+        return new pg.Client({
+          host,
+          port,
+          database,
+          user,
+          password,
+          ssl,
+        } as pg.ClientConfig);
+      });
   }
 
   async start(callbacks: NotifyListenerCallbacks): Promise<void> {
@@ -41,7 +51,7 @@ export class NotifyListener {
     this.callbacks = null;
     if (this.client) {
       try {
-        await this.client.query('UNLISTEN *');
+        await this.client.query("UNLISTEN *");
       } catch {
         // ignore — connection may already be dead
       }
@@ -57,15 +67,15 @@ export class NotifyListener {
   private async connect(): Promise<void> {
     this.client = this.createClient();
 
-    this.client.on('notification', () => {
+    this.client.on("notification", () => {
       this.callbacks?.onNotification();
     });
 
-    this.client.on('error', () => {
+    this.client.on("error", () => {
       this.handleDisconnect();
     });
 
-    this.client.on('end', () => {
+    this.client.on("end", () => {
       this.handleDisconnect();
     });
 
@@ -87,15 +97,17 @@ export class NotifyListener {
       startingDelay: 500,
       maxDelay: 30_000,
       retry: () => !this.stopping,
-    }).then(() => {
-      this.reconnecting = false;
-      this.callbacks?.onReconnect();
-    }).catch(() => {
-      // stopped during reconnection — nothing to do
-    });
+    })
+      .then(() => {
+        this.reconnecting = false;
+        this.callbacks?.onReconnect();
+      })
+      .catch(() => {
+        // stopped during reconnection — nothing to do
+      });
   }
 }
 
 function quoteIdent(ident: string): string {
-  return '"' + ident.replace(/"/g, '""') + '"';
+  return `"${ident.replace(/"/g, '""')}"`;
 }
