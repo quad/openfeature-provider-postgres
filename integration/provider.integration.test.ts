@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { PGlite } from "@electric-sql/pglite";
-import { Client, Pool } from "@middle-management/pglite-pg-adapter";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
 import { PostgresProvider } from "../src/index.ts";
+import { createClient, createPgLite, createPool } from "../test/pglite.ts";
 
 const migration = readFileSync(
   new URL("../migration.sql", import.meta.url),
@@ -13,8 +12,8 @@ const migration = readFileSync(
 
 describe("Integration: full lifecycle", () => {
   it("initialize → insert → ConfigurationChanged → evaluate", async () => {
-    const pglite = new PGlite();
-    const pool = new Pool({ pglite });
+    const pglite = createPgLite();
+    const pool = createPool(pglite);
     await pglite.exec(migration);
 
     // Insert initial flag before provider starts
@@ -29,10 +28,10 @@ describe("Integration: full lifecycle", () => {
     `);
 
     const provider = new PostgresProvider({
-      pool: pool as any,
+      pool,
       syncIntervalMs: 60_000_000,
-      createClient: () => new Client({ pglite }) as any,
-    } as any);
+      createClient: () => createClient(pglite),
+    });
 
     await OpenFeature.setProviderAndWait("test", provider);
     const client = OpenFeature.getClient("test");
@@ -65,15 +64,15 @@ describe("Integration: full lifecycle", () => {
   });
 
   it("AsyncDisposable cleanup is idempotent", async () => {
-    const pglite = new PGlite();
-    const pool = new Pool({ pglite });
+    const pglite = createPgLite();
+    const pool = createPool(pglite);
     await pglite.exec(migration);
 
     const provider = new PostgresProvider({
-      pool: pool as any,
+      pool,
       syncIntervalMs: 60_000_000,
-      createClient: () => new Client({ pglite }) as any,
-    } as any);
+      createClient: () => createClient(pglite),
+    });
 
     await provider.initialize();
 

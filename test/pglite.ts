@@ -1,0 +1,28 @@
+/**
+ * PGlite test helpers.
+ *
+ * The PGlite adapter (`@middle-management/pglite-pg-adapter`) exposes Pool and
+ * Client classes that are structurally compatible with `pg` but are distinct
+ * TypeScript types. Every test needs to bridge them via `as unknown as pg.X`.
+ *
+ * This module does that cast once so individual test files stay clean.
+ */
+
+import { PGlite } from "@electric-sql/pglite";
+import { Client, Pool } from "@middle-management/pglite-pg-adapter";
+import { DefaultLogger } from "@openfeature/server-sdk";
+import type pg from "pg";
+
+export function createPgLite(): PGlite {
+  return new PGlite();
+}
+
+export function createPool(pglite: PGlite): pg.Pool {
+  return new Pool({ pglite }) as unknown as pg.Pool;
+}
+
+export function createClient(pglite: PGlite): pg.Client {
+  return new Client({ pglite }) as unknown as pg.Client;
+}
+
+export const logger = new DefaultLogger();

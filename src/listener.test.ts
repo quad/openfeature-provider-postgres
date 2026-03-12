@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
-import { PGlite } from "@electric-sql/pglite";
-import { Client, Pool } from "@middle-management/pglite-pg-adapter";
+import { createClient, createPgLite, createPool } from "../test/pglite.ts";
 import { NotifyListener } from "./listener.ts";
 
 describe("NotifyListener", () => {
-  let pglite: PGlite;
-  let pool: Pool;
+  let pglite: ReturnType<typeof createPgLite>;
+  let pool: ReturnType<typeof createPool>;
 
   after(async () => {
     await pool?.end();
@@ -14,13 +13,13 @@ describe("NotifyListener", () => {
   });
 
   it("receives notifications via LISTEN/NOTIFY", async () => {
-    pglite = new PGlite();
-    pool = new Pool({ pglite });
+    pglite = createPgLite();
+    pool = createPool(pglite);
 
     const listener = new NotifyListener({
-      pool: pool as any,
+      pool,
       channelName: "flag_change",
-      createClient: () => new Client({ pglite }) as any,
+      createClient: () => createClient(pglite),
     });
 
     const notifications: number[] = [];
@@ -43,13 +42,13 @@ describe("NotifyListener", () => {
   });
 
   it("stops cleanly", async () => {
-    pglite = new PGlite();
-    pool = new Pool({ pglite });
+    pglite = createPgLite();
+    pool = createPool(pglite);
 
     const listener = new NotifyListener({
-      pool: pool as any,
+      pool,
       channelName: "flag_change",
-      createClient: () => new Client({ pglite }) as any,
+      createClient: () => createClient(pglite),
     });
 
     await listener.start({

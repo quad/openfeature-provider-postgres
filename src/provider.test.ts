@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { PGlite } from "@electric-sql/pglite";
-import { Client, Pool } from "@middle-management/pglite-pg-adapter";
 import {
   FlagNotFoundError,
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
+import {
+  createClient,
+  createPgLite,
+  createPool,
+  logger,
+} from "../test/pglite.ts";
 import { PostgresProvider } from "./provider.ts";
 
 const migration = readFileSync(
@@ -16,22 +20,22 @@ const migration = readFileSync(
 );
 
 async function setup() {
-  const pglite = new PGlite();
-  const pool = new Pool({ pglite });
+  const pglite = createPgLite();
+  const pool = createPool(pglite);
   await pglite.exec(migration);
 
   const provider = new PostgresProvider({
-    pool: pool as any,
+    pool,
     syncIntervalMs: 60_000_000, // effectively disabled for tests
-    createClient: () => new Client({ pglite }) as any,
-  } as any);
+    createClient: () => createClient(pglite),
+  });
 
   return { pglite, pool, provider };
 }
 
 describe("PostgresProvider", () => {
-  let pglite: PGlite;
-  let pool: Pool;
+  let pglite: ReturnType<typeof createPgLite>;
+  let pool: ReturnType<typeof createPool>;
   let provider: PostgresProvider;
 
   beforeEach(async () => {
@@ -61,7 +65,7 @@ describe("PostgresProvider", () => {
         "bool-flag",
         false,
         {},
-        console as any,
+        logger,
       );
       assert.equal(result.value, true);
       assert.equal(result.variant, "on");
@@ -84,7 +88,7 @@ describe("PostgresProvider", () => {
         "greeting",
         "",
         {},
-        console as any,
+        logger,
       );
       assert.equal(result.value, "Hello, world!");
       assert.equal(result.variant, "hello");
@@ -106,7 +110,7 @@ describe("PostgresProvider", () => {
         "rate-limit",
         0,
         {},
-        console as any,
+        logger,
       );
       assert.equal(result.value, 100);
       assert.equal(result.variant, "default");
@@ -128,7 +132,7 @@ describe("PostgresProvider", () => {
         "config",
         {},
         {},
-        console as any,
+        logger,
       );
       assert.deepEqual(result.value, { theme: "dark", limit: 10 });
       assert.equal(result.variant, "v1");
@@ -150,7 +154,7 @@ describe("PostgresProvider", () => {
         "tags",
         [],
         {},
-        console as any,
+        logger,
       );
       assert.deepEqual(result.value, ["a", "b", "c"]);
     });
@@ -162,12 +166,7 @@ describe("PostgresProvider", () => {
 
       await assert.rejects(
         () =>
-          provider.resolveBooleanEvaluation(
-            "nonexistent",
-            false,
-            {},
-            console as any,
-          ),
+          provider.resolveBooleanEvaluation("nonexistent", false, {}, logger),
         FlagNotFoundError,
       );
     });
@@ -185,8 +184,7 @@ describe("PostgresProvider", () => {
       await provider.initialize();
 
       await assert.rejects(
-        () =>
-          provider.resolveStringEvaluation("bool-flag", "", {}, console as any),
+        () => provider.resolveStringEvaluation("bool-flag", "", {}, logger),
         TypeMismatchError,
       );
     });
@@ -209,7 +207,7 @@ describe("PostgresProvider", () => {
         "disabled-flag",
         false,
         {},
-        console as any,
+        logger,
       );
       assert.equal(result.value, false); // default value, not stored value
       assert.equal(result.reason, StandardResolutionReasons.DISABLED);
@@ -238,7 +236,7 @@ describe("PostgresProvider", () => {
         "ab-test",
         "",
         { targetingKey: "user-123" },
-        console as any,
+        logger,
       );
       assert.equal(result.reason, "SPLIT");
       assert.ok(["control", "treatment"].includes(result.variant ?? ""));
@@ -267,7 +265,7 @@ describe("PostgresProvider", () => {
           "ab-test",
           "",
           { targetingKey: "user-123" },
-          console as any,
+          logger,
         );
         results.add(r.variant ?? "");
       }
@@ -295,7 +293,7 @@ describe("PostgresProvider", () => {
         "ab-test",
         "",
         {},
-        console as any,
+        logger,
       );
       assert.equal(result.variant, "control");
       assert.equal(result.reason, StandardResolutionReasons.STATIC);
