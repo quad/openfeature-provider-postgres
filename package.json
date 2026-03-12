@@ -1,0 +1,36 @@
+{
+  "name": "openfeature-provider-postgres",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./migration.sql": "./migration.sql"
+  },
+  "files": [
+    "dist",
+    "migration.sql"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test"
+  },
+  "peerDependencies": {
+    "@openfeature/server-sdk": "^1.13.0",
+    "pg": "^8.0.0"
+  },
+  "dependencies": {
+    "exponential-backoff": "^3.1.2"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0",
+    "@middle-management/pglite-pg-adapter": "^0.0.4",
+    "@openfeature/server-sdk": "^1.13.0",
+    "@types/node": ">=22",
+    "@types/pg": "^8.11.0",
+    "pg": "^8.13.0",
+    "typescript": ">=5.7"
+  }
+}
