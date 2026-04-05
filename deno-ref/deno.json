@@ -1,0 +1,28 @@
+{
+  "name": "@quad/route-pattern",
+  "version": "0.1.1",
+  "description": "Generate and match URLs from the same route pattern — typesafe path params, built on URLPattern, zero dependencies.",
+  "exports": "./src/route-pattern.ts",
+  "publish": {
+    "exclude": [
+      "**/*.test.ts"
+    ],
+    "include": [
+      "LICENSE",
+      "README.md",
+      "src/"
+    ]
+  },
+  "tasks": {
+    "cd": "deno task ci && deno task publish:jsr",
+    "ci:fix": "deno fmt && deno lint --fix",
+    "ci:test": "deno check && deno test --doc",
+    "ci": "deno task ci:fix && deno task ci:test",
+    "dev": "deno test --watch",
+    "publish:jsr": "deno publish"
+  },
+  "license": "Apache-2.0",
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1"
+  }
+}
