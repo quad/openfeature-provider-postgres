@@ -1,7 +1,7 @@
 import { assertStrictEquals } from "@std/assert";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
-import { PostgresProvider } from "../src/index.ts";
-import { createClient, createPgLite, createPool } from "../test/pglite.ts";
+import { PostgresProvider } from "./index.ts";
+import { createClient, createPgLite, createPool } from "./pglite.ts";
 
 const migration = Deno.readTextFileSync(
   new URL("../migration.sql", import.meta.url),

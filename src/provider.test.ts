@@ -9,12 +9,7 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
-import {
-  createClient,
-  createPgLite,
-  createPool,
-  logger,
-} from "../test/pglite.ts";
+import { createClient, createPgLite, createPool, logger } from "./pglite.ts";
 import { PostgresProvider } from "./provider.ts";
 
 const migration = Deno.readTextFileSync(

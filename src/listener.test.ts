@@ -1,5 +1,5 @@
 import { assert } from "@std/assert";
-import { createClient, createPgLite, createPool } from "../test/pglite.ts";
+import { createClient, createPgLite, createPool } from "./pglite.ts";
 import { NotifyListener } from "./listener.ts";
 
 Deno.test("NotifyListener > receives notifications via LISTEN/NOTIFY", async () => {

@@ -10,7 +10,7 @@
   "tasks": {
     "cd": "deno task ci && deno task publish:jsr",
     "ci:fix": "deno fmt && deno lint --fix",
-    "ci:test": "deno check src/index.ts src/provider.test.ts src/listener.test.ts integration/provider.integration.test.ts && deno test --allow-read",
+    "ci:test": "deno check src/ && deno test --allow-read",
     "ci": "deno task ci:fix && deno task ci:test",
     "dev": "deno test --watch --allow-read",
     "publish:jsr": "deno publish"
