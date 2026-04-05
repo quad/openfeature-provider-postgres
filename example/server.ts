@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs";
 import type { EvaluationContext } from "@openfeature/server-sdk";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
-import express from "express";
-import { PostgresProvider } from "openfeature-provider-postgres";
+import express from "npm:express";
+import { PostgresProvider } from "../src/index.ts";
 import pg from "pg";
 
 const pool = new pg.Pool({
@@ -11,9 +10,8 @@ const pool = new pg.Pool({
 });
 
 // Run the idempotent migration at boot
-const migration = readFileSync(
+const migration = Deno.readTextFileSync(
   new URL("../migration.sql", import.meta.url),
-  "utf8",
 );
 await pool.query(migration);
 

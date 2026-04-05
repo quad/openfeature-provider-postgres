@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import pg from "pg";
 
 const pool = new pg.Pool({
@@ -6,11 +5,10 @@ const pool = new pg.Pool({
     process.env.DATABASE_URL ?? "postgres://localhost:5432/flags",
 });
 
-const migration = readFileSync(
+const migration = Deno.readTextFileSync(
   new URL("../migration.sql", import.meta.url),
-  "utf8",
 );
-const seed = readFileSync(new URL("seed.sql", import.meta.url), "utf8");
+const seed = Deno.readTextFileSync(new URL("seed.sql", import.meta.url));
 
 await pool.query(migration);
 await pool.query(seed);
