@@ -1,8 +1,10 @@
 # Example: Feature Flags Dashboard
 
-A minimal Express app that displays live feature flag values using the Postgres OpenFeature provider.
+A minimal Express app that displays live feature flag values using the Postgres
+OpenFeature provider.
 
-Flags update in real-time via Server-Sent Events — change a flag in Postgres and the page refreshes automatically.
+Flags update in real-time via Server-Sent Events — change a flag in Postgres and
+the page refreshes automatically.
 
 ## Setup
 
@@ -22,17 +24,18 @@ npm start
 
 Open http://localhost:3000 to see the flags dashboard.
 
-Add `?user=user-123` to the URL to see rollout behavior (the "greeting" flag has a 50/50 split).
+Add `?user=user-123` to the URL to see rollout behavior (the "greeting" flag has
+a 50/50 split).
 
 ## Demo flags
 
-| Flag          | Type    | Behavior                                           |
-|---------------|---------|---------------------------------------------------|
-| `dark-mode`   | boolean | Toggles page theme                                |
-| `greeting`    | string  | 50% rollout — varies by `targetingKey`            |
-| `max-items`   | number  | Standard (25) vs premium (100)                    |
-| `banner`      | object  | Promo banner with text and color                  |
-| `maintenance` | boolean | Disabled flag — always returns the default value  |
+| Flag          | Type    | Behavior                                         |
+| ------------- | ------- | ------------------------------------------------ |
+| `dark-mode`   | boolean | Toggles page theme                               |
+| `greeting`    | string  | 50% rollout — varies by `targetingKey`           |
+| `max-items`   | number  | Standard (25) vs premium (100)                   |
+| `banner`      | object  | Promo banner with text and color                 |
+| `maintenance` | boolean | Disabled flag — always returns the default value |
 
 ## Try it
 
@@ -51,5 +54,6 @@ The page updates instantly via LISTEN/NOTIFY.
 
 ## Environment variables
 
-- `DATABASE_URL` — Postgres connection string (default: `postgres://localhost:5432/flags`)
+- `DATABASE_URL` — Postgres connection string (default:
+  `postgres://localhost:5432/flags`)
 - `PORT` — HTTP port (default: `3000`)

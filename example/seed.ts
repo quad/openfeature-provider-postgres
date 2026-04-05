@@ -1,8 +1,9 @@
 import pg from "pg";
+import process from "node:process";
 
 const pool = new pg.Pool({
-  connectionString:
-    process.env.DATABASE_URL ?? "postgres://localhost:5432/flags",
+  connectionString: process.env.DATABASE_URL ??
+    "postgres://localhost:5432/flags",
 });
 
 const migration = Deno.readTextFileSync(

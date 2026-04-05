@@ -1,12 +1,13 @@
 import type { EvaluationContext } from "@openfeature/server-sdk";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
-import express from "npm:express";
+import express, { type Request, type Response } from "express";
 import { PostgresProvider } from "../src/index.ts";
 import pg from "pg";
+import process from "node:process";
 
 const pool = new pg.Pool({
-  connectionString:
-    process.env.DATABASE_URL ?? "postgres://localhost:5432/flags",
+  connectionString: process.env.DATABASE_URL ??
+    "postgres://localhost:5432/flags",
 });
 
 // Run the idempotent migration at boot
@@ -50,13 +51,13 @@ async function evaluateFlags(targetingKey?: string) {
 }
 
 // JSON API
-app.get("/api/flags", async (req, res) => {
+app.get("/api/flags", async (req: Request, res: Response) => {
   const flags = await evaluateFlags((req.query.user as string) || undefined);
   res.json(flags);
 });
 
 // SSE endpoint
-app.get("/events", (req, res) => {
+app.get("/events", (req: Request, res: Response) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -66,7 +67,7 @@ app.get("/events", (req, res) => {
 });
 
 // HTML page
-app.get("/", async (req, res) => {
+app.get("/", async (req: Request, res: Response) => {
   const user = (req.query.user as string) || undefined;
   const flags = await evaluateFlags(user);
   const banner = flags.banner.value as { text: string; color: string };
@@ -117,12 +118,20 @@ app.get("/", async (req, res) => {
       font-size: 0.75rem;
       font-weight: 600;
     }
-    .pill-static { background: ${dark ? "#1e3a5f" : "#dbeafe"}; color: ${dark ? "#93c5fd" : "#2563eb"}; }
-    .pill-split { background: ${dark ? "#3b1f2b" : "#fce7f3"}; color: ${dark ? "#f9a8d4" : "#db2777"}; }
-    .pill-disabled { background: ${dark ? "#2a2a2a" : "#f1f5f9"}; color: ${dark ? "#666" : "#94a3b8"}; }
+    .pill-static { background: ${dark ? "#1e3a5f" : "#dbeafe"}; color: ${
+    dark ? "#93c5fd" : "#2563eb"
+  }; }
+    .pill-split { background: ${dark ? "#3b1f2b" : "#fce7f3"}; color: ${
+    dark ? "#f9a8d4" : "#db2777"
+  }; }
+    .pill-disabled { background: ${dark ? "#2a2a2a" : "#f1f5f9"}; color: ${
+    dark ? "#666" : "#94a3b8"
+  }; }
     .user-form { margin-bottom: 2rem; display: flex; gap: 0.5rem; }
     .user-form input {
-      padding: 0.5rem; border-radius: 0.375rem; border: 1px solid ${dark ? "#2a2a4a" : "#e2e8f0"};
+      padding: 0.5rem; border-radius: 0.375rem; border: 1px solid ${
+    dark ? "#2a2a4a" : "#e2e8f0"
+  };
       background: ${dark ? "#16213e" : "#fff"}; color: inherit; flex: 1;
     }
     .user-form button {
@@ -141,11 +150,17 @@ app.get("/", async (req, res) => {
   <p class="subtitle"><span class="live-dot"></span>Live — updates when flags change in Postgres</p>
 
   <form class="user-form" method="get">
-    <input name="user" placeholder="targeting key (e.g. user-123)" value="${user ?? ""}" />
+    <input name="user" placeholder="targeting key (e.g. user-123)" value="${
+    user ?? ""
+  }" />
     <button type="submit">Evaluate</button>
   </form>
 
-  ${flags.maintenance.value ? '<div class="banner" style="background:#dc2626">Maintenance mode is ON — this flag is disabled, so it returns the default (false). This banner is just for show.</div>' : ""}
+  ${
+    flags.maintenance.value
+      ? '<div class="banner" style="background:#dc2626">Maintenance mode is ON — this flag is disabled, so it returns the default (false). This banner is just for show.</div>'
+      : ""
+  }
 
   <div class="banner">${banner.text}</div>
 
@@ -168,16 +183,14 @@ function renderFlag(
   details: { value: unknown; variant?: string; reason?: string },
 ) {
   const reason = details.reason ?? "";
-  const pillClass =
-    reason === "DISABLED"
-      ? "pill-disabled"
-      : reason === "SPLIT"
-        ? "pill-split"
-        : "pill-static";
-  const display =
-    typeof details.value === "object"
-      ? JSON.stringify(details.value)
-      : String(details.value);
+  const pillClass = reason === "DISABLED"
+    ? "pill-disabled"
+    : reason === "SPLIT"
+    ? "pill-split"
+    : "pill-static";
+  const display = typeof details.value === "object"
+    ? JSON.stringify(details.value)
+    : String(details.value);
 
   return `<div class="flag">
     <div>

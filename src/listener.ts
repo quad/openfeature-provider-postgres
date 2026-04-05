@@ -24,8 +24,7 @@ export class NotifyListener {
 
   constructor(options: NotifyListenerOptions) {
     this.channelName = options.channelName;
-    this.createClient =
-      options.createClient ??
+    this.createClient = options.createClient ??
       (() => {
         const { host, port, database, user, password, ssl } = options.pool
           .options as unknown as Record<string, unknown>;

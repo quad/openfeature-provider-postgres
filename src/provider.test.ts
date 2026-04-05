@@ -186,8 +186,7 @@ Deno.test("error handling > throws FlagNotFoundError for missing flags", async (
     await provider.initialize();
 
     await assertRejects(
-      () =>
-        provider.resolveBooleanEvaluation("nonexistent", false, {}, logger),
+      () => provider.resolveBooleanEvaluation("nonexistent", false, {}, logger),
       FlagNotFoundError,
     );
   } finally {

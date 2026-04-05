@@ -28,7 +28,7 @@ import {
 export class PostgresProvider implements Provider {
   readonly metadata = { name: "openfeature-provider-postgres" };
   readonly runsOn = "server" as const;
-  events = new OpenFeatureEventEmitter();
+  events: OpenFeatureEventEmitter = new OpenFeatureEventEmitter();
 
   private cache = new Map<string, FlagData>();
   private readonly pool: PostgresProviderOptions["pool"];
@@ -106,7 +106,12 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<boolean>> {
-    return await this.resolve<boolean>(flagKey, defaultValue, "boolean", context);
+    return await this.resolve<boolean>(
+      flagKey,
+      defaultValue,
+      "boolean",
+      context,
+    );
   }
 
   async resolveStringEvaluation(

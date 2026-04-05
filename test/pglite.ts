@@ -18,10 +18,12 @@ export function createPgLite(): PGlite {
 }
 
 export function createPool(pglite: PGlite): pg.Pool {
+  // @ts-ignore: PGlite ESM/CTS dual-package type mismatch
   return new Pool({ pglite }) as unknown as pg.Pool;
 }
 
 export function createClient(pglite: PGlite): pg.Client {
+  // @ts-ignore: PGlite ESM/CTS dual-package type mismatch
   return new Client({ pglite }) as unknown as pg.Client;
 }
 

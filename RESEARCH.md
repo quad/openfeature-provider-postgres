@@ -2,7 +2,8 @@
 
 ## 1. OpenFeature Provider Interface (JS Server SDK)
 
-The OpenFeature JS Server SDK defines the `Provider` interface that all server-side providers must implement. The key types and contracts are:
+The OpenFeature JS Server SDK defines the `Provider` interface that all
+server-side providers must implement. The key types and contracts are:
 
 ### Provider Interface
 
@@ -11,23 +12,31 @@ interface Provider extends CommonProvider<ServerProviderStatus> {
   readonly hooks?: Hook[];
 
   resolveBooleanEvaluation(
-    flagKey: string, defaultValue: boolean,
-    context: EvaluationContext, logger: Logger
+    flagKey: string,
+    defaultValue: boolean,
+    context: EvaluationContext,
+    logger: Logger,
   ): Promise<ResolutionDetails<boolean>>;
 
   resolveStringEvaluation(
-    flagKey: string, defaultValue: string,
-    context: EvaluationContext, logger: Logger
+    flagKey: string,
+    defaultValue: string,
+    context: EvaluationContext,
+    logger: Logger,
   ): Promise<ResolutionDetails<string>>;
 
   resolveNumberEvaluation(
-    flagKey: string, defaultValue: number,
-    context: EvaluationContext, logger: Logger
+    flagKey: string,
+    defaultValue: number,
+    context: EvaluationContext,
+    logger: Logger,
   ): Promise<ResolutionDetails<number>>;
 
   resolveObjectEvaluation<T extends JsonValue>(
-    flagKey: string, defaultValue: T,
-    context: EvaluationContext, logger: Logger
+    flagKey: string,
+    defaultValue: T,
+    context: EvaluationContext,
+    logger: Logger,
   ): Promise<ResolutionDetails<T>>;
 }
 ```
@@ -39,7 +48,7 @@ type ResolutionDetails<U> = {
   value: U;
   variant?: string;
   flagMetadata?: FlagMetadata;
-  reason?: ResolutionReason;  // STATIC | DEFAULT | TARGETING_MATCH | SPLIT | CACHED | DISABLED | STALE | ERROR
+  reason?: ResolutionReason; // STATIC | DEFAULT | TARGETING_MATCH | SPLIT | CACHED | DISABLED | STALE | ERROR
   errorCode?: ErrorCode;
   errorMessage?: string;
 };
@@ -49,13 +58,14 @@ type ResolutionDetails<U> = {
 
 ```typescript
 type EvaluationContext = {
-  targetingKey?: string;  // uniquely identifies the subject of evaluation
+  targetingKey?: string; // uniquely identifies the subject of evaluation
 } & Record<string, EvaluationContextValue>;
 ```
 
 ### Provider Events
 
 Providers can emit events to signal state changes:
+
 - `PROVIDER_READY` - provider is ready to evaluate
 - `PROVIDER_ERROR` - provider is in error state
 - `PROVIDER_CONFIGURATION_CHANGED` - flag config has changed in the source
@@ -63,39 +73,48 @@ Providers can emit events to signal state changes:
 
 ### Error Types
 
-The SDK provides specific error classes: `FlagNotFoundError`, `ParseError`, `TypeMismatchError`, `GeneralError`, `TargetingKeyMissingError`, `InvalidContextError`, `ProviderNotReadyError`, `ProviderFatalError`.
+The SDK provides specific error classes: `FlagNotFoundError`, `ParseError`,
+`TypeMismatchError`, `GeneralError`, `TargetingKeyMissingError`,
+`InvalidContextError`, `ProviderNotReadyError`, `ProviderFatalError`.
 
 ### Provider Lifecycle
 
-Providers implement `metadata: { name: string }` and `runsOn: 'server'`. They can optionally implement `initialize()` and `onClose()` lifecycle methods.
+Providers implement `metadata: { name: string }` and `runsOn: 'server'`. They
+can optionally implement `initialize()` and `onClose()` lifecycle methods.
 
 ---
 
 ## 2. Reference: Env-Var Provider (simplest provider)
 
-The env-var provider is the simplest possible reference implementation. Key takeaways:
+The env-var provider is the simplest possible reference implementation. Key
+takeaways:
 
 - Reads flag values from `process.env`
 - No events, no caching, no lifecycle hooks
-- Each `resolve*Evaluation` method delegates to a shared `evaluateEnvironmentVariable` method that:
+- Each `resolve*Evaluation` method delegates to a shared
+  `evaluateEnvironmentVariable` method that:
   1. Transforms the flag key (e.g., `is-banner-enabled` -> `IS_BANNER_ENABLED`)
   2. Looks up the env var
   3. Throws `FlagNotFoundError` if missing
   4. Parses the string value into the appropriate type
   5. Throws `ParseError` if parsing fails
   6. Returns `{ value, reason: 'STATIC' }`
-- The `defaultValue` and `context` parameters are **not used** in this simple provider
+- The `defaultValue` and `context` parameters are **not used** in this simple
+  provider
 
 ---
 
 ## 3. Reference: In-Memory Provider (event-emitting provider)
 
-The SDK's built-in in-memory provider shows how to support dynamic configuration:
+The SDK's built-in in-memory provider shows how to support dynamic
+configuration:
 
-- Stores flags as a `FlagConfiguration` object (variants + contextEvaluator functions)
+- Stores flags as a `FlagConfiguration` object (variants + contextEvaluator
+  functions)
 - Emits `ConfigurationChanged` events when `putConfiguration()` is called
 - Supports variant-based resolution and context-based targeting
-- Returns `reason: 'TARGETING_MATCH'` when context evaluation is used, otherwise `'STATIC'`
+- Returns `reason: 'TARGETING_MATCH'` when context evaluation is used, otherwise
+  `'STATIC'`
 - Returns `reason: 'DISABLED'` with the default value for disabled flags
 
 ---
@@ -116,18 +135,21 @@ CREATE TABLE IF NOT EXISTS go_feature_flag (
 ```
 
 Key design choices:
+
 - Flag configuration is stored as a single **JSONB blob** per flag
 - Supports flagsets for grouping/filtering flags
 - Indexes on `flag_name`, `flagset`, and a composite unique constraint
 - The retriever simply reads the config column and deserializes the JSON
 
-This is a **simple key-value** approach: one row per flag, the full evaluation config is in JSONB.
+This is a **simple key-value** approach: one row per flag, the full evaluation
+config is in JSONB.
 
 ---
 
 ## 5. Neon Guide - Full Feature Flag System in PostgreSQL
 
-This guide describes a comprehensive feature flag system with segments and rules.
+This guide describes a comprehensive feature flag system with segments and
+rules.
 
 ### Schema (4 tables)
 
@@ -174,12 +196,14 @@ CREATE TABLE segment_conditions (
 2. Fetch rules for the flag (with segment joins)
 3. If no rules exist, flag is enabled for all users
 4. For each rule: check if user matches segment conditions
-5. If user matches segment, apply percentage rollout using FNV-1a hash of `userID + flagName`
+5. If user matches segment, apply percentage rollout using FNV-1a hash of
+   `userID + flagName`
 6. Return true on first matching rule
 
 ### Key Patterns
 
-- **Consistent hashing** for percentage rollouts: `fnv32a(userID + flagName) % 100`
+- **Consistent hashing** for percentage rollouts:
+  `fnv32a(userID + flagName) % 100`
 - **All-AND segment conditions**: user must match ALL conditions in a segment
 - **No caching**: every evaluation hits the database directly
 - **Boolean-only**: the system only supports enabled/disabled, no typed values
@@ -195,17 +219,21 @@ Uses **Redis** (not Postgres) for flag storage, with three flag patterns:
 3. **Geo-targeting**: IP-to-country lookup in Postgres, cached in Redis
 
 Key insights:
+
 - Evaluates flags at three layers: UI rendering, page access, server actions
 - Redis chosen for speed with non-structured data
 - Same-network deployment reduces latency vs third-party providers
 
-Not directly applicable to a Postgres-only approach, but validates the pattern of **local evaluation with a backing store**.
+Not directly applicable to a Postgres-only approach, but validates the pattern
+of **local evaluation with a backing store**.
 
 ---
 
 ## 7. Brandur - Instant Feature Flags (Postgres LISTEN/NOTIFY)
 
-This is the most relevant architecture for a Postgres-backed provider. The system uses **local in-memory caching with instant invalidation via Postgres LISTEN/NOTIFY**.
+This is the most relevant architecture for a Postgres-backed provider. The
+system uses **local in-memory caching with instant invalidation via Postgres
+LISTEN/NOTIFY**.
 
 ### Architecture
 
@@ -223,6 +251,7 @@ This is the most relevant architecture for a Postgres-backed provider. The syste
 ### Schema Design
 
 Separate tables per token type for data integrity:
+
 - `flag` - core flag state (on/off, randomization percentage)
 - `flag_account`, `flag_cluster`, `flag_team` - token-specific overrides
 
@@ -264,10 +293,13 @@ for {
 ### Key Design Decisions
 
 - **Row-level triggers** (not statement-level) to avoid false notifications
-- **`WHEN (OLD.* IS DISTINCT FROM NEW.*)`** on UPDATE triggers to skip no-op updates
-- **Transaction deduplication**: Postgres deduplicates NOTIFY within a transaction, so bulk updates trigger only one re-sync
+- **`WHEN (OLD.* IS DISTINCT FROM NEW.*)`** on UPDATE triggers to skip no-op
+  updates
+- **Transaction deduplication**: Postgres deduplicates NOTIFY within a
+  transaction, so bulk updates trigger only one re-sync
 - **Periodic fallback sync** (5 min) in case notifications are missed
-- **Millisecond activation**: changes propagate before you can switch browser tabs
+- **Millisecond activation**: changes propagate before you can switch browser
+  tabs
 
 ---
 
@@ -287,15 +319,17 @@ Describes a system for **compile-time type safety** of flag references.
 ```typescript
 // Generated enum from OpenAPI
 export const FlagName = {
-  AnalyticsEnable: 'analytics_enable',
-  MetricViewsAllowUnlimitedRaw: 'metric_views_allow_unlimited_raw',
+  AnalyticsEnable: "analytics_enable",
+  MetricViewsAllowUnlimitedRaw: "metric_views_allow_unlimited_raw",
 } as const;
 export type FlagName = typeof FlagName[keyof typeof FlagName];
 ```
 
 ### Takeaway
 
-Type safety is achieved through code generation from a flag registry, not through the database schema. This is a **complementary concern** - the DB stores runtime state, the type system ensures correct references.
+Type safety is achieved through code generation from a flag registry, not
+through the database schema. This is a **complementary concern** - the DB stores
+runtime state, the type system ensures correct references.
 
 ---
 
@@ -305,58 +339,69 @@ Two main Node.js Postgres clients support LISTEN/NOTIFY:
 
 ### `pg` (node-postgres)
 
-The most established Node.js Postgres client. LISTEN/NOTIFY uses a **dedicated `Client` connection** (not a pool):
+The most established Node.js Postgres client. LISTEN/NOTIFY uses a **dedicated
+`Client` connection** (not a pool):
 
 ```typescript
-import pg from 'pg';
+import pg from "pg";
 
 const client = new pg.Client();
 await client.connect();
 
-await client.query('LISTEN flag_change');
+await client.query("LISTEN flag_change");
 
-client.on('notification', (msg) => {
-  console.log(msg.channel);   // 'flag_change'
-  console.log(msg.payload);   // optional payload string
+client.on("notification", (msg) => {
+  console.log(msg.channel); // 'flag_change'
+  console.log(msg.payload); // optional payload string
   console.log(msg.processId); // originating PG backend PID
 });
 ```
 
-**Caveat**: LISTEN requires a dedicated, long-lived `Client` connection — it does **not** work with `Pool` (pooled connections may be released/reused). The provider will need both a `Pool` for queries and a separate `Client` for the listener.
+**Caveat**: LISTEN requires a dedicated, long-lived `Client` connection — it
+does **not** work with `Pool` (pooled connections may be released/reused). The
+provider will need both a `Pool` for queries and a separate `Client` for the
+listener.
 
 ### `postgres` (postgres.js)
 
-A newer, TypeScript-first client. LISTEN/NOTIFY is built in with automatic reconnection:
+A newer, TypeScript-first client. LISTEN/NOTIFY is built in with automatic
+reconnection:
 
 ```typescript
-import postgres from 'postgres';
+import postgres from "postgres";
 
 const sql = postgres(connectionString);
 
-await sql.listen('flag_change', (payload) => {
+await sql.listen("flag_change", (payload) => {
   // Automatically handles dedicated connection
   // Reconnects with backoff on disconnect
   resyncCache();
 });
 ```
 
-**Advantages**: `sql.listen()` automatically manages a dedicated connection, handles reconnection with backoff, and provides an `onlisten` callback for re-initialization after reconnects:
+**Advantages**: `sql.listen()` automatically manages a dedicated connection,
+handles reconnection with backoff, and provides an `onlisten` callback for
+re-initialization after reconnects:
 
 ```typescript
 await sql.listen(
-  'flag_change',
+  "flag_change",
   () => resyncCache(),
-  () => resyncCache()  // also re-sync on reconnect
+  () => resyncCache(), // also re-sync on reconnect
 );
 ```
 
 ### Recommendation
 
-**`pg` (node-postgres)** — the application already uses `pg`, so we should stay consistent. The provider will need to manage two connections:
-1. A `Pool` for flag queries (loading/syncing the cache)
-2. A dedicated `Client` for the LISTEN connection (long-lived, handles notifications)
+**`pg` (node-postgres)** — the application already uses `pg`, so we should stay
+consistent. The provider will need to manage two connections:
 
-The provider should handle reconnection of the listener `Client` manually (e.g., on `error`/`end` events, reconnect with backoff and re-issue `LISTEN`).
+1. A `Pool` for flag queries (loading/syncing the cache)
+2. A dedicated `Client` for the LISTEN connection (long-lived, handles
+   notifications)
+
+The provider should handle reconnection of the listener `Client` manually (e.g.,
+on `error`/`end` events, reconnect with backoff and re-issue `LISTEN`).
 
 ---
 
@@ -364,11 +409,15 @@ The provider should handle reconnection of the listener `Client` manually (e.g.,
 
 ### Minimal Approach (v1)
 
-Based on the research, the simplest viable Postgres-backed OpenFeature provider would:
+Based on the research, the simplest viable Postgres-backed OpenFeature provider
+would:
 
-1. **Schema**: Single table with `flag_key`, `flag_type`, and `flag_value` (text, parsed per type)
-2. **Evaluation**: Query Postgres for the flag key, parse the value to the requested type
-3. **Errors**: `FlagNotFoundError` for missing keys, `ParseError`/`TypeMismatchError` for type issues
+1. **Schema**: Single table with `flag_key`, `flag_type`, and `flag_value`
+   (text, parsed per type)
+2. **Evaluation**: Query Postgres for the flag key, parse the value to the
+   requested type
+3. **Errors**: `FlagNotFoundError` for missing keys,
+   `ParseError`/`TypeMismatchError` for type issues
 4. **Reason**: Return `STATIC` for simple lookups
 
 ### Enhanced Approach (v2)
@@ -376,7 +425,8 @@ Based on the research, the simplest viable Postgres-backed OpenFeature provider 
 Add caching and change notification:
 
 1. **In-memory cache**: Load all flags on `initialize()`, serve from cache
-2. **LISTEN/NOTIFY**: Use Postgres triggers + LISTEN to invalidate cache instantly
+2. **LISTEN/NOTIFY**: Use Postgres triggers + LISTEN to invalidate cache
+   instantly
 3. **Events**: Emit `ConfigurationChanged` when cache refreshes
 4. **Periodic fallback**: Re-sync every N minutes as a safety net
 5. **Reason**: Return `CACHED` for cache hits, `STATIC` for direct DB reads
@@ -386,13 +436,16 @@ Add caching and change notification:
 Add targeting and variants:
 
 1. **Schema**: Flags table + variants table + rules/conditions tables
-2. **Context evaluation**: Use `EvaluationContext` (targetingKey, attributes) for rule matching
+2. **Context evaluation**: Use `EvaluationContext` (targetingKey, attributes)
+   for rule matching
 3. **Percentage rollouts**: Consistent hashing on `targetingKey + flagKey`
-4. **Reason**: Return `TARGETING_MATCH` when rules apply, `SPLIT` for percentage rollouts
+4. **Reason**: Return `TARGETING_MATCH` when rules apply, `SPLIT` for percentage
+   rollouts
 
 ### Recommended Starting Point
 
 Start with **v1 plus the LISTEN/NOTIFY cache from v2**. This gives:
+
 - Zero-latency evaluations (in-memory cache)
 - Instant flag updates (Postgres notifications)
 - Simple schema (easy to set up and reason about)
@@ -433,8 +486,8 @@ CREATE TRIGGER flag_change_delete AFTER DELETE ON feature_flags
 
 ```typescript
 class PostgresProvider implements Provider {
-  metadata = { name: 'postgres' };
-  runsOn = 'server' as const;
+  metadata = { name: "postgres" };
+  runsOn = "server" as const;
   events = new OpenFeatureEventEmitter();
 
   private cache: Map<string, FlagRow>;
@@ -452,21 +505,29 @@ class PostgresProvider implements Provider {
   }
 
   async resolveBooleanEvaluation(flagKey, defaultValue, context, logger) {
-    return this.resolve(flagKey, 'boolean', v => {
-      if (v === 'true') return true;
-      if (v === 'false') return false;
+    return this.resolve(flagKey, "boolean", (v) => {
+      if (v === "true") return true;
+      if (v === "false") return false;
       throw new ParseError(`Cannot parse '${v}' as boolean`);
     });
   }
 
   // ... resolveString, resolveNumber, resolveObject similarly
 
-  private resolve<T>(flagKey: string, expectedType: string, parse: (v: string) => T): ResolutionDetails<T> {
+  private resolve<T>(
+    flagKey: string,
+    expectedType: string,
+    parse: (v: string) => T,
+  ): ResolutionDetails<T> {
     const flag = this.cache.get(flagKey);
     if (!flag) throw new FlagNotFoundError(flagKey);
-    if (flag.disabled) return { value: defaultValue, reason: 'DISABLED' };
+    if (flag.disabled) return { value: defaultValue, reason: "DISABLED" };
     if (flag.flag_type !== expectedType) throw new TypeMismatchError();
-    return { value: parse(flag.flag_value), reason: 'CACHED', variant: flag.variant };
+    return {
+      value: parse(flag.flag_value),
+      reason: "CACHED",
+      variant: flag.variant,
+    };
   }
 }
 ```
