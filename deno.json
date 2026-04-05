@@ -13,7 +13,7 @@
     "ci:test": "deno check src/index.ts src/provider.test.ts src/listener.test.ts integration/provider.integration.test.ts example/server.ts example/seed.ts && deno test --allow-read",
     "ci": "deno task ci:fix && deno task ci:test",
     "dev": "deno test --watch --allow-read",
-    "publish:jsr": "deno publish --allow-slow-types"
+    "publish:jsr": "deno publish"
   },
   "exclude": ["node_modules", "deno-ref"],
   "imports": {
