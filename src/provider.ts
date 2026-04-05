@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type {
   EvaluationContext,
   JsonValue,
@@ -107,7 +106,7 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<boolean>> {
-    return this.resolve<boolean>(flagKey, defaultValue, "boolean", context);
+    return await this.resolve<boolean>(flagKey, defaultValue, "boolean", context);
   }
 
   async resolveStringEvaluation(
@@ -116,7 +115,7 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<string>> {
-    return this.resolve<string>(flagKey, defaultValue, "string", context);
+    return await this.resolve<string>(flagKey, defaultValue, "string", context);
   }
 
   async resolveNumberEvaluation(
@@ -125,7 +124,7 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<number>> {
-    return this.resolve<number>(flagKey, defaultValue, "number", context);
+    return await this.resolve<number>(flagKey, defaultValue, "number", context);
   }
 
   async resolveObjectEvaluation<T extends JsonValue>(
@@ -134,15 +133,15 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<T>> {
-    return this.resolve<T>(flagKey, defaultValue, "object", context);
+    return await this.resolve<T>(flagKey, defaultValue, "object", context);
   }
 
-  private resolve<T>(
+  private async resolve<T>(
     flagKey: string,
     defaultValue: T,
     expectedType: FlagData["flagType"],
     context: EvaluationContext,
-  ): ResolutionDetails<T> {
+  ): Promise<ResolutionDetails<T>> {
     const flag = this.cache.get(flagKey);
     if (!flag) throw new FlagNotFoundError(`Flag "${flagKey}" not found`);
 
@@ -163,7 +162,7 @@ export class PostgresProvider implements Provider {
     let reason: string;
 
     if (flag.rollout && context.targetingKey) {
-      chosenVariant = this.pickRolloutVariant(flag, context.targetingKey);
+      chosenVariant = await this.pickRolloutVariant(flag, context.targetingKey);
       reason = "SPLIT";
     } else {
       chosenVariant = flag.defaultVariant;
@@ -180,11 +179,13 @@ export class PostgresProvider implements Provider {
     return { value: value as T, variant: chosenVariant, reason };
   }
 
-  private pickRolloutVariant(flag: FlagData, targetingKey: string): string {
-    const hash = createHash("sha256")
-      .update(targetingKey + flag.flagKey)
-      .digest();
-    const bucket = hash.readUInt32BE(0) % 100;
+  private async pickRolloutVariant(
+    flag: FlagData,
+    targetingKey: string,
+  ): Promise<string> {
+    const data = new TextEncoder().encode(targetingKey + flag.flagKey);
+    const buf = await crypto.subtle.digest("SHA-256", data);
+    const bucket = new DataView(buf).getUint32(0, false) % 100;
 
     let cumulative = 0;
     for (const entry of flag.rollout ?? []) {
