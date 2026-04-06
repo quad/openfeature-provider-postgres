@@ -8,7 +8,6 @@
  * This module does that cast once so individual test files stay clean.
  */
 
-// deno-lint-ignore-file no-import-prefix
 import { PGlite } from "npm:@electric-sql/pglite@^0.3.0";
 import { Client, Pool } from "npm:@middle-management/pglite-pg-adapter@^0.0.4";
 import { DefaultLogger } from "@openfeature/server-sdk";

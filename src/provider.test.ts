@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 import {
   assert,
   assertEquals,
@@ -10,7 +9,12 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
-import { createClient, createPgLite, createPool, logger } from "./pglite.ts";
+import {
+  createClient,
+  createPgLite,
+  createPool,
+  logger,
+} from "./pglite-helper.test.ts";
 import { PostgresProvider } from "./provider.ts";
 
 const migration = Deno.readTextFileSync(

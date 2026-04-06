@@ -1,6 +1,9 @@
-// deno-lint-ignore-file no-import-prefix
 import { assert } from "jsr:@std/assert@1";
-import { createClient, createPgLite, createPool } from "./pglite.ts";
+import {
+  createClient,
+  createPgLite,
+  createPool,
+} from "./pglite-helper.test.ts";
 import { NotifyListener } from "./listener.ts";
 
 Deno.test("NotifyListener > receives notifications via LISTEN/NOTIFY", async () => {

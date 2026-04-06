@@ -4,7 +4,7 @@
   "license": "Apache-2.0",
   "exports": "./src/index.ts",
   "publish": {
-    "exclude": ["**/*.test.ts", "src/pglite.ts"],
+    "exclude": ["**/*.test.ts"],
     "include": ["LICENSE", "README.md", "src/", "migration.sql"]
   },
   "tasks": {
