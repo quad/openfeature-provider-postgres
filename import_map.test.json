@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1",
+    "@openfeature/server-sdk": "npm:@openfeature/server-sdk@^1.13.0",
+    "pg": "npm:pg@^8.13.0",
+    "@electric-sql/pglite": "npm:@electric-sql/pglite@^0.3.0",
+    "@middle-management/pglite-pg-adapter": "npm:@middle-management/pglite-pg-adapter@^0.0.4",
+    "exponential-backoff": "npm:exponential-backoff@^3.1.2"
+  }
+}

@@ -113,9 +113,6 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@std/assert@1",
-      "npm:@electric-sql/pglite@0.3",
-      "npm:@middle-management/pglite-pg-adapter@^0.0.4",
       "npm:@openfeature/server-sdk@^1.13.0",
       "npm:exponential-backoff@^3.1.2",
       "npm:pg@^8.13.0"
