@@ -10,9 +10,9 @@
   "tasks": {
     "cd": "deno task ci && deno task publish:jsr",
     "ci:fix": "deno fmt && deno lint --fix",
-    "ci:test": "deno check --import-map import_map.test.json src/ && deno test --allow-read --import-map import_map.test.json",
+    "ci:test": "deno check src/ && deno test --allow-read",
     "ci": "deno task ci:fix && deno task ci:test",
-    "dev": "deno test --watch --allow-read --import-map import_map.test.json",
+    "dev": "deno test --watch --allow-read",
     "publish:jsr": "deno publish"
   },
   "exclude": ["node_modules", "deno-ref"],

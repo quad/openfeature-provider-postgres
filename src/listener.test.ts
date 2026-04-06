@@ -1,4 +1,5 @@
-import { assert } from "@std/assert";
+// deno-lint-ignore-file no-import-prefix
+import { assert } from "jsr:@std/assert@1";
 import { createClient, createPgLite, createPool } from "./pglite.ts";
 import { NotifyListener } from "./listener.ts";
 

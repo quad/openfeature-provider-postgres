@@ -1,4 +1,5 @@
-import { assertStrictEquals } from "@std/assert";
+// deno-lint-ignore-file no-import-prefix
+import { assertStrictEquals } from "jsr:@std/assert@1";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
 import { PostgresProvider } from "./index.ts";
 import { createClient, createPgLite, createPool } from "./pglite.ts";

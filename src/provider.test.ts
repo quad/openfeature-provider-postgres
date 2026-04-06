@@ -1,9 +1,10 @@
+// deno-lint-ignore-file no-import-prefix
 import {
   assert,
   assertEquals,
   assertRejects,
   assertStrictEquals,
-} from "@std/assert";
+} from "jsr:@std/assert@1";
 import {
   FlagNotFoundError,
   StandardResolutionReasons,
