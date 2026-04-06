@@ -5,20 +5,21 @@
   "exports": "./src/index.ts",
   "publish": {
     "exclude": ["**/*.test.ts"],
-    "include": ["LICENSE", "README.md", "src/", "migration.sql"]
+    "include": [
+      "LICENSE",
+      "migration.sql",
+      "README.md",
+      "src/"
+    ]
   },
   "tasks": {
-    "cd": "deno task ci && deno task publish:jsr",
+    "ci": "deno task ci:fix && deno test --allow-read",
     "ci:fix": "deno fmt && deno lint --fix",
-    "ci:test": "deno check src/ && deno test --allow-read",
-    "ci": "deno task ci:fix && deno task ci:test",
-    "dev": "deno test --watch --allow-read",
-    "publish:jsr": "deno publish"
+    "dev": "deno test --watch --allow-read"
   },
-  "exclude": ["node_modules", "deno-ref"],
   "imports": {
     "@openfeature/server-sdk": "npm:@openfeature/server-sdk@^1.13.0",
-    "pg": "npm:pg@^8.13.0",
-    "exponential-backoff": "npm:exponential-backoff@^3.1.2"
+    "exponential-backoff": "npm:exponential-backoff@^3.1.2",
+    "pg": "npm:pg@^8.13.0"
   }
 }
