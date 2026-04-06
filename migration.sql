@@ -4,7 +4,6 @@ CREATE SCHEMA IF NOT EXISTS openfeature;
 CREATE TABLE IF NOT EXISTS openfeature.feature_flags (
     flag_key        TEXT PRIMARY KEY,
     flag_type       TEXT NOT NULL CHECK (flag_type IN ('boolean', 'string', 'number', 'object')),
-    default_variant TEXT NOT NULL,
     enabled         BOOLEAN NOT NULL DEFAULT true,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -12,16 +11,21 @@ CREATE TABLE IF NOT EXISTS openfeature.feature_flags (
 );
 
 -- Typed variants (type safety via jsonb_typeof CHECK)
+-- is_default: NULL = not the default, TRUE = the default variant for this flag.
+-- UNIQUE (flag_key, is_default) enforces at-most-one default per flag: NULLs are
+-- considered distinct in PostgreSQL unique indexes, so many NULL rows are allowed,
+-- but only one TRUE per flag_key.
 CREATE TABLE IF NOT EXISTS openfeature.flag_variants (
     flag_key   TEXT NOT NULL,
     variant    TEXT NOT NULL,
     flag_type  TEXT NOT NULL,
     value      JSONB NOT NULL,
+    is_default BOOLEAN CHECK (is_default IS NULL OR is_default),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CHECK (jsonb_typeof(value) = flag_type
-           OR (flag_type = 'object' AND jsonb_typeof(value) = 'array')),
+    CHECK (jsonb_typeof(value) = flag_type),
     PRIMARY KEY (flag_key, variant),
+    UNIQUE (flag_key, is_default),
     FOREIGN KEY (flag_key, flag_type) REFERENCES openfeature.feature_flags(flag_key, flag_type)
 );
 
