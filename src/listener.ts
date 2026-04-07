@@ -14,7 +14,7 @@ export async function startNotifyListener(
 ): Promise<Disposable> {
   const { pool, channelName, onNotification, onConnectionLost, onReconnect } =
     options;
-  let state: "listening" | "reconnecting" | "stopped" = "listening";
+  let state: "listening" | "reconnecting" | "stopped";
 
   async function connect(): Promise<pg.PoolClient> {
     const c = await pool.connect();
