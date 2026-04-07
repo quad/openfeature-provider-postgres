@@ -14,10 +14,10 @@ export async function startNotifyListener(
 ): Promise<Disposable> {
   const { pool, channelName, onNotification, onConnectionLost, onReconnect } =
     options;
-  let client!: pg.PoolClient;
+  let client = await pool.connect();
   let state: "listening" | "reconnecting" | "stopped" = "listening";
 
-  async function connect(): Promise<void> {
+  async function reconnect(): Promise<void> {
     client = await pool.connect();
     client.on("notification", onNotification);
     client.on("error", handleConnectionLost);
@@ -31,7 +31,7 @@ export async function startNotifyListener(
     state = "reconnecting";
     client.release(true);
     onConnectionLost();
-    backOff(() => connect(), {
+    backOff(() => reconnect(), {
       numOfAttempts: Infinity,
       maxDelay: 30_000,
       jitter: "full",
@@ -43,7 +43,10 @@ export async function startNotifyListener(
       });
   }
 
-  await connect();
+  client.on("notification", onNotification);
+  client.on("error", handleConnectionLost);
+  client.on("end", handleConnectionLost);
+  await client.query(`LISTEN ${pg.escapeIdentifier(channelName)}`);
 
   return {
     [Symbol.dispose]() {
