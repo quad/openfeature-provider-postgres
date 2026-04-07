@@ -3,24 +3,20 @@ import {
   createPgLite,
   createPool,
 } from "./pglite-helper.test.ts";
-import { NotifyListener } from "./listener.ts";
+import { startNotifyListener } from "./listener.ts";
 
-Deno.test("NotifyListener > receives notifications via LISTEN/NOTIFY", async () => {
+Deno.test("startNotifyListener > receives notifications via LISTEN/NOTIFY", async () => {
   const pglite = createPgLite();
   const pool = createPool(pglite);
   try {
     const notifications: number[] = [];
-    const listener = new NotifyListener({
+    const listener = await startNotifyListener({
       pool,
       channelName: "flag_change",
-      callbacks: {
-        onNotification: () => notifications.push(Date.now()),
-        onReconnect: () => {},
-        onConnectionLost: () => {},
-      },
+      onNotification: () => notifications.push(Date.now()),
+      onReconnect: () => {},
+      onConnectionLost: () => {},
     });
-
-    await listener.start();
 
     // Send a notification via the pool (separate connection)
     await pool.query("NOTIFY flag_change");
@@ -38,25 +34,21 @@ Deno.test("NotifyListener > receives notifications via LISTEN/NOTIFY", async () 
   }
 });
 
-Deno.test("NotifyListener > stops cleanly", async () => {
+Deno.test("startNotifyListener > disposes cleanly", async () => {
   const pglite = createPgLite();
   const pool = createPool(pglite);
   try {
-    const listener = new NotifyListener({
+    const listener = await startNotifyListener({
       pool,
       channelName: "flag_change",
-      callbacks: {
-        onNotification: () => {},
-        onReconnect: () => {},
-        onConnectionLost: () => {},
-      },
+      onNotification: () => {},
+      onReconnect: () => {},
+      onConnectionLost: () => {},
     });
-
-    await listener.start();
 
     // Should not throw
     listener[Symbol.dispose]();
-    // Idempotent stop
+    // Idempotent dispose
     listener[Symbol.dispose]();
   } finally {
     await pool.end();

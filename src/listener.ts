@@ -1,84 +1,60 @@
 import { backOff } from "exponential-backoff";
 import pg from "pg";
 
-export interface NotifyListenerCallbacks {
+export interface NotifyListenerOptions {
+  pool: pg.Pool;
+  channelName: string;
   onNotification: () => void;
   onReconnect: () => void;
   onConnectionLost: () => void;
 }
 
-export interface NotifyListenerOptions {
-  pool: pg.Pool;
-  channelName: string;
-  callbacks: NotifyListenerCallbacks;
-}
+export async function startNotifyListener(
+  options: NotifyListenerOptions,
+): Promise<Disposable> {
+  const { pool, channelName, onNotification, onConnectionLost, onReconnect } =
+    options;
+  let client: pg.PoolClient | null = null;
+  let state: "listening" | "reconnecting" | "stopped" = "listening";
 
-type ListenerState = "idle" | "listening" | "reconnecting" | "stopped";
-
-export class NotifyListener {
-  private client: pg.PoolClient | null = null;
-  private state: ListenerState = "idle";
-  private readonly pool: pg.Pool;
-  private readonly channelName: string;
-  private readonly callbacks: NotifyListenerCallbacks;
-
-  constructor(options: NotifyListenerOptions) {
-    this.pool = options.pool;
-    this.channelName = options.channelName;
-    this.callbacks = options.callbacks;
+  async function connect(): Promise<void> {
+    client = await pool.connect();
+    client.on("notification", () => onNotification());
+    client.on("error", () => handleConnectionLost());
+    client.on("end", () => handleConnectionLost());
+    await client.query(`LISTEN ${pg.escapeIdentifier(channelName)}`);
+    state = "listening";
   }
 
-  async start(): Promise<void> {
-    this.client = await this.pool.connect();
-
-    this.client.on("notification", () => {
-      this.callbacks.onNotification();
-    });
-
-    this.client.on("error", () => {
-      this.handleDisconnect();
-    });
-
-    this.client.on("end", () => {
-      this.handleDisconnect();
-    });
-
-    await this.client.query(`LISTEN ${pg.escapeIdentifier(this.channelName)}`);
-    this.state = "listening";
+  function releaseClient(): void {
+    if (!client) return;
+    client.release(true);
+    client = null;
   }
 
-  [Symbol.dispose](): void {
-    this.state = "stopped";
-    this.releaseClient();
-  }
-
-  private releaseClient(): void {
-    if (!this.client) return;
-    this.client.release(true);
-    this.client = null;
-  }
-
-  private handleDisconnect(): void {
-    if (this.state === "stopped" || this.state === "reconnecting") return;
-    this.state = "reconnecting";
-    this.releaseClient();
-    this.callbacks.onConnectionLost();
-    this.reconnect();
-  }
-
-  private reconnect(): void {
-    backOff(() => this.start(), {
+  function handleConnectionLost(): void {
+    if (state === "stopped" || state === "reconnecting") return;
+    state = "reconnecting";
+    releaseClient();
+    onConnectionLost();
+    backOff(() => connect(), {
       numOfAttempts: Infinity,
       maxDelay: 30_000,
       jitter: "full",
-      retry: () => this.state !== "stopped",
+      retry: () => state !== "stopped",
     })
-      .then(() => {
-        this.callbacks.onReconnect();
-      })
+      .then(() => onReconnect())
       .catch(() => {
         // stopped during reconnection — nothing to do
       });
   }
-}
 
+  await connect();
+
+  return {
+    [Symbol.dispose]() {
+      state = "stopped";
+      releaseClient();
+    },
+  };
+}

@@ -15,7 +15,7 @@ import {
   TypeMismatchError,
 } from "@openfeature/server-sdk";
 import pg from "pg";
-import { NotifyListener } from "./listener.ts";
+import { startNotifyListener } from "./listener.ts";
 import type {
   FlagData,
   PostgresProviderOptions,
@@ -37,7 +37,7 @@ export class PostgresProvider implements Provider {
   private readonly schema: string;
   private readonly channelName: string;
   private readonly syncIntervalMs: number;
-  private listener: NotifyListener | null = null;
+  private listener: Disposable | null = null;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private disposed = false;
   private initialized = false;
@@ -55,34 +55,31 @@ export class PostgresProvider implements Provider {
 
     await this.syncCache();
 
-    this.listener = new NotifyListener({
+    this.listener = await startNotifyListener({
       pool: this.pool,
       channelName: this.channelName,
-      callbacks: {
-        onNotification: () => {
-          this.syncCache().then((changed) => {
-            if (changed) {
-              this.events.emit(ProviderEvents.ConfigurationChanged);
-            }
-          }).catch(() => {
-            this.events.emit(ProviderEvents.Stale);
-          });
-        },
-        onReconnect: () => {
-          this.syncCache().then((changed) => {
-            if (changed) {
-              this.events.emit(ProviderEvents.ConfigurationChanged);
-            }
-          }).catch(() => {
-            this.events.emit(ProviderEvents.Stale);
-          });
-        },
-        onConnectionLost: () => {
+      onNotification: () => {
+        this.syncCache().then((changed) => {
+          if (changed) {
+            this.events.emit(ProviderEvents.ConfigurationChanged);
+          }
+        }).catch(() => {
           this.events.emit(ProviderEvents.Stale);
-        },
+        });
+      },
+      onReconnect: () => {
+        this.syncCache().then((changed) => {
+          if (changed) {
+            this.events.emit(ProviderEvents.ConfigurationChanged);
+          }
+        }).catch(() => {
+          this.events.emit(ProviderEvents.Stale);
+        });
+      },
+      onConnectionLost: () => {
+        this.events.emit(ProviderEvents.Stale);
       },
     });
-    await this.listener.start();
 
     this.syncInterval = setInterval(() => {
       this.syncCache().then((changed) => {
