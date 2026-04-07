@@ -183,7 +183,8 @@ export class PostgresProvider implements Provider {
     // split rather than silently skewing the distribution toward earlier entries.
     const rollout = flag.rollout ?? [];
     const total = rollout.reduce((sum, r) => sum + r.percentage, 0);
-    const bucket = new Uint32Array(buf)[0] % Math.max(total, 100);
+    // Big-endian read for consistent bucketing across architectures
+    const bucket = new DataView(buf).getUint32(0) % Math.max(total, 100);
 
     let cumulative = 0;
     for (const entry of rollout) {
