@@ -19,7 +19,6 @@ import { startNotifyListener } from "./listener.ts";
 import type {
   FlagData,
   PostgresProviderOptions,
-  RolloutEntry,
 } from "./types.ts";
 import {
   DEFAULT_CHANNEL,
@@ -245,15 +244,10 @@ export class PostgresProvider implements Provider {
 
       if (row.percentage != null) {
         if (!flag.rollout) flag.rollout = [];
-        // Avoid duplicate rollout entries when JOIN produces multiple rows
-        if (
-          !flag.rollout.some((r: RolloutEntry) => r.variant === row.variant)
-        ) {
-          flag.rollout.push({
-            variant: row.variant,
-            percentage: row.percentage,
-          });
-        }
+        flag.rollout.push({
+          variant: row.variant,
+          percentage: row.percentage,
+        });
       }
     }
 
