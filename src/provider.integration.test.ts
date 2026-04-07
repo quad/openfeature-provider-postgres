@@ -18,13 +18,13 @@ Deno.test("Integration: initialize → insert → ConfigurationChanged → evalu
 
   // Insert initial flag before provider starts
   await pool.query(`
-    INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
-    VALUES ('my-flag', 'boolean', 'on')
+    INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+    VALUES ('my-flag', 'boolean')
   `);
   await pool.query(`
-    INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-    VALUES ('my-flag', 'on', 'boolean', 'true'),
-           ('my-flag', 'off', 'boolean', 'false')
+    INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+    VALUES ('my-flag', 'on',  'boolean', 'true',  true),
+           ('my-flag', 'off', 'boolean', 'false', NULL)
   `);
 
   const provider = new PostgresProvider({
@@ -36,7 +36,7 @@ Deno.test("Integration: initialize → insert → ConfigurationChanged → evalu
   await OpenFeature.setProviderAndWait("test", provider);
   const client = OpenFeature.getClient("test");
 
-  // Evaluate initial value
+  // Evaluate initial value (default variant is 'on' → true)
   const initial = await client.getBooleanValue("my-flag", false);
   assertStrictEquals(initial, true);
 
@@ -45,15 +45,17 @@ Deno.test("Integration: initialize → insert → ConfigurationChanged → evalu
     client.addHandler(ProviderEvents.ConfigurationChanged, () => resolve());
   });
 
-  // Update the flag — triggers NOTIFY
+  // Swap the default to 'off' — triggers NOTIFY via UPDATE trigger
   await pool.query(`
-    UPDATE openfeature.feature_flags SET default_variant = 'off' WHERE flag_key = 'my-flag'
+    UPDATE openfeature.flag_variants
+    SET is_default = CASE WHEN variant = 'off' THEN true ELSE NULL END
+    WHERE flag_key = 'my-flag'
   `);
 
   // Wait for the ConfigurationChanged event
   await changed;
 
-  // Evaluate updated value
+  // Evaluate updated value (default variant is now 'off' → false)
   const updated = await client.getBooleanValue("my-flag", true);
   assertStrictEquals(updated, false);
 

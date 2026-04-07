@@ -6,6 +6,7 @@ import {
 } from "jsr:@std/assert@1";
 import {
   FlagNotFoundError,
+  ProviderEvents,
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
@@ -35,16 +36,20 @@ async function setup() {
   return { pglite, pool, provider };
 }
 
+// ---------------------------------------------------------------------------
+// Flag resolution
+// ---------------------------------------------------------------------------
+
 Deno.test("flag resolution > resolves boolean flags", async () => {
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
-      VALUES ('bool-flag', 'boolean', 'on')
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('bool-flag', 'boolean')
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('bool-flag', 'on', 'boolean', 'true')
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+      VALUES ('bool-flag', 'on', 'boolean', 'true', true)
     `);
 
     await provider.initialize();
@@ -69,12 +74,12 @@ Deno.test("flag resolution > resolves string flags", async () => {
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
-      VALUES ('greeting', 'string', 'hello')
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('greeting', 'string')
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('greeting', 'hello', 'string', '"Hello, world!"')
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+      VALUES ('greeting', 'hello', 'string', '"Hello, world!"', true)
     `);
 
     await provider.initialize();
@@ -98,12 +103,12 @@ Deno.test("flag resolution > resolves number flags", async () => {
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
-      VALUES ('rate-limit', 'number', 'default')
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('rate-limit', 'number')
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('rate-limit', 'default', 'number', '100')
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+      VALUES ('rate-limit', 'default', 'number', '100', true)
     `);
 
     await provider.initialize();
@@ -127,12 +132,12 @@ Deno.test("flag resolution > resolves object flags", async () => {
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
-      VALUES ('config', 'object', 'v1')
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('config', 'object')
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('config', 'v1', 'object', '{"theme": "dark", "limit": 10}')
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+      VALUES ('config', 'v1', 'object', '{"theme": "dark", "limit": 10}', true)
     `);
 
     await provider.initialize();
@@ -152,33 +157,9 @@ Deno.test("flag resolution > resolves object flags", async () => {
   }
 });
 
-Deno.test("flag resolution > resolves array values under object type", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
-      VALUES ('tags', 'object', 'default')
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('tags', 'default', 'object', '["a", "b", "c"]')
-    `);
-
-    await provider.initialize();
-
-    const result = await provider.resolveObjectEvaluation(
-      "tags",
-      [],
-      {},
-      logger,
-    );
-    assertEquals(result.value, ["a", "b", "c"]);
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+// ---------------------------------------------------------------------------
+// Error handling
+// ---------------------------------------------------------------------------
 
 Deno.test("error handling > throws FlagNotFoundError for missing flags", async () => {
   const { pglite, pool, provider } = await setup();
@@ -200,12 +181,12 @@ Deno.test("error handling > throws TypeMismatchError for wrong type", async () =
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
-      VALUES ('bool-flag', 'boolean', 'on')
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('bool-flag', 'boolean')
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('bool-flag', 'on', 'boolean', 'true')
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+      VALUES ('bool-flag', 'on', 'boolean', 'true', true)
     `);
 
     await provider.initialize();
@@ -221,16 +202,20 @@ Deno.test("error handling > throws TypeMismatchError for wrong type", async () =
   }
 });
 
+// ---------------------------------------------------------------------------
+// Disabled flags
+// ---------------------------------------------------------------------------
+
 Deno.test("disabled flags > returns default value with DISABLED reason", async () => {
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant, enabled)
-      VALUES ('disabled-flag', 'boolean', 'on', false)
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled)
+      VALUES ('disabled-flag', 'boolean', false)
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('disabled-flag', 'on', 'boolean', 'true')
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+      VALUES ('disabled-flag', 'on', 'boolean', 'true', true)
     `);
 
     await provider.initialize();
@@ -250,17 +235,21 @@ Deno.test("disabled flags > returns default value with DISABLED reason", async (
   }
 });
 
+// ---------------------------------------------------------------------------
+// Rollouts
+// ---------------------------------------------------------------------------
+
 Deno.test("rollouts > returns SPLIT reason with targeting key", async () => {
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
-      VALUES ('ab-test', 'string', 'control')
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('ab-test', 'string')
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('ab-test', 'control', 'string', '"Control"'),
-             ('ab-test', 'treatment', 'string', '"Treatment"')
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+      VALUES ('ab-test', 'control', 'string', '"Control"', true),
+             ('ab-test', 'treatment', 'string', '"Treatment"', NULL)
     `);
     await pool.query(`
       INSERT INTO openfeature.flag_rollouts (flag_key, variant, percentage)
@@ -275,7 +264,7 @@ Deno.test("rollouts > returns SPLIT reason with targeting key", async () => {
       { targetingKey: "user-123" },
       logger,
     );
-    assertStrictEquals(result.reason, "SPLIT");
+    assertStrictEquals(result.reason, StandardResolutionReasons.SPLIT);
     assert(["control", "treatment"].includes(result.variant ?? ""));
   } finally {
     await provider.onClose();
@@ -288,13 +277,13 @@ Deno.test("rollouts > is deterministic for the same targeting key", async () => 
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
-      VALUES ('ab-test', 'string', 'control')
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('ab-test', 'string')
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('ab-test', 'control', 'string', '"Control"'),
-             ('ab-test', 'treatment', 'string', '"Treatment"')
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+      VALUES ('ab-test', 'control', 'string', '"Control"', true),
+             ('ab-test', 'treatment', 'string', '"Treatment"', NULL)
     `);
     await pool.query(`
       INSERT INTO openfeature.flag_rollouts (flag_key, variant, percentage)
@@ -325,13 +314,13 @@ Deno.test("rollouts > falls back to default variant without targeting key", asyn
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
-      VALUES ('ab-test', 'string', 'control')
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('ab-test', 'string')
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('ab-test', 'control', 'string', '"Control"'),
-             ('ab-test', 'treatment', 'string', '"Treatment"')
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+      VALUES ('ab-test', 'control', 'string', '"Control"', true),
+             ('ab-test', 'treatment', 'string', '"Treatment"', NULL)
     `);
     await pool.query(`
       INSERT INTO openfeature.flag_rollouts (flag_key, variant, percentage)
@@ -355,12 +344,68 @@ Deno.test("rollouts > falls back to default variant without targeting key", asyn
   }
 });
 
+Deno.test("rollouts > normalizes percentages > 100 proportionally", async () => {
+  // 70 + 70 = 140 total. Math.max(140, 100) = 140 as bucket divisor.
+  // Buckets 0–69 → 'a' (50%), buckets 70–139 → 'b' (50%).
+  // This is the intended behaviour: treat percentages as weights when they
+  // overflow, so 70/70 means the same as 50/50.
+  const { pglite, pool, provider } = await setup();
+  try {
+    await pool.query(`
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('split-test', 'string')
+    `);
+    await pool.query(`
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+      VALUES ('split-test', 'a', 'string', '"A"', true),
+             ('split-test', 'b', 'string', '"B"', NULL)
+    `);
+    await pool.query(`
+      INSERT INTO openfeature.flag_rollouts (flag_key, variant, percentage)
+      VALUES ('split-test', 'a', 70),
+             ('split-test', 'b', 70)
+    `);
+
+    await provider.initialize();
+
+    const counts: Record<string, number> = { a: 0, b: 0 };
+    for (let i = 0; i < 200; i++) {
+      const r = await provider.resolveStringEvaluation(
+        "split-test",
+        "",
+        { targetingKey: `user-${i}` },
+        logger,
+      );
+      counts[r.variant ?? ""]++;
+    }
+
+    // With SHA-256 and 200 users both variants should appear and neither should
+    // dominate (within a generous ±30% tolerance around 50%).
+    assert(
+      counts.a >= 70 && counts.a <= 130,
+      `Expected a ≈ 100/200, got ${counts.a}`,
+    );
+    assert(
+      counts.b >= 70 && counts.b <= 130,
+      `Expected b ≈ 100/200, got ${counts.b}`,
+    );
+  } finally {
+    await provider.onClose();
+    await pool.end();
+    await pglite.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DB constraint enforcement
+// ---------------------------------------------------------------------------
+
 Deno.test("DB constraint enforcement > rejects wrong-typed JSONB values", async () => {
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
-      VALUES ('bool-flag', 'boolean', 'on')
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('bool-flag', 'boolean')
     `);
 
     await assertRejects(
@@ -379,34 +424,149 @@ Deno.test("DB constraint enforcement > rejects wrong-typed JSONB values", async 
   }
 });
 
-Deno.test("validation warnings > warns when default_variant references nonexistent variant", async () => {
+Deno.test("DB constraint enforcement > rejects JSONB arrays for object-type variants", async () => {
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, default_variant)
-      VALUES ('bad-default', 'boolean', 'nonexistent')
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('bad-default', 'on', 'boolean', 'true')
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('tags', 'object')
     `);
 
-    const warnings: string[] = [];
-    const origWarn = console.warn;
-    console.warn = (msg: string) => warnings.push(msg);
-    try {
-      await provider.initialize();
-    } finally {
-      console.warn = origWarn;
-    }
-
-    assert(
-      warnings.some((w) => w.includes("nonexistent")),
-      `Expected warning about nonexistent variant, got: ${warnings}`,
+    await assertRejects(
+      () =>
+        pool.query(`
+        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
+        VALUES ('tags', 'default', 'object', '["a", "b", "c"]')
+      `),
+      Error,
+      "check",
     );
   } finally {
     await provider.onClose();
     await pool.end();
     await pglite.close();
   }
+});
+
+Deno.test("DB constraint enforcement > rejects a second is_default = true for the same flag", async () => {
+  const { pglite, pool, provider } = await setup();
+  try {
+    await pool.query(`
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('my-flag', 'boolean')
+    `);
+    await pool.query(`
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+      VALUES ('my-flag', 'on', 'boolean', 'true', true)
+    `);
+
+    await assertRejects(
+      () =>
+        pool.query(`
+        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+        VALUES ('my-flag', 'off', 'boolean', 'false', true)
+      `),
+      Error,
+    );
+  } finally {
+    await provider.onClose();
+    await pool.end();
+    await pglite.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// initialize() behaviour
+// ---------------------------------------------------------------------------
+
+Deno.test("initialize > propagates syncCache errors to the caller", async () => {
+  const pglite = createPgLite();
+  const pool = createPool(pglite);
+  // Do NOT run migration — the query inside syncCache will fail (schema missing)
+  const provider = new PostgresProvider({
+    pool,
+    createClient: () => createClient(pglite),
+  });
+  try {
+    await assertRejects(() => provider.initialize(), Error);
+  } finally {
+    await provider.onClose();
+    await pool.end();
+    await pglite.close();
+  }
+});
+
+Deno.test("initialize > double-call is a no-op", async () => {
+  const { pglite, pool, provider } = await setup();
+  try {
+    await provider.initialize();
+    await provider.initialize(); // should not throw or create a second listener
+  } finally {
+    await provider.onClose();
+    await pool.end();
+    await pglite.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Background sync behaviour
+// ---------------------------------------------------------------------------
+
+Deno.test("background sync > emits Stale when periodic sync fails", async () => {
+  const pglite = createPgLite();
+  const pool = createPool(pglite);
+  await pglite.exec(migration);
+
+  let failQueries = false;
+  const wrappedPool = {
+    query: (sql: string) => {
+      if (failQueries) return Promise.reject(new Error("DB down"));
+      return pool.query(sql);
+    },
+  } as unknown as typeof pool;
+
+  const provider = new PostgresProvider({
+    pool: wrappedPool,
+    syncIntervalMs: 10, // fire quickly
+    createClient: () => createClient(pglite),
+  });
+
+  await provider.initialize();
+  failQueries = true;
+
+  await new Promise<void>((resolve) => {
+    provider.events.addHandler(ProviderEvents.Stale, () => resolve());
+  });
+
+  await provider.onClose();
+  await pool.end();
+  await pglite.close();
+});
+
+Deno.test("background sync > does not emit ConfigurationChanged when nothing changed", async () => {
+  const pglite = createPgLite();
+  const pool = createPool(pglite);
+  await pglite.exec(migration);
+
+  const provider = new PostgresProvider({
+    pool,
+    syncIntervalMs: 10, // fire quickly
+    createClient: () => createClient(pglite),
+  });
+
+  await provider.initialize();
+
+  let changeCount = 0;
+  provider.events.addHandler(ProviderEvents.ConfigurationChanged, () => {
+    changeCount++;
+  });
+
+  // Allow several sync cycles to fire
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  assertStrictEquals(changeCount, 0, "should not fire when cache is unchanged");
+
+  await provider.onClose();
+  await pool.end();
+  await pglite.close();
 });
