@@ -14,7 +14,7 @@ export async function startNotifyListener(
 ): Promise<Disposable> {
   const { pool, channelName, onNotification, onConnectionLost, onReconnect } =
     options;
-  let client: pg.PoolClient | null = null;
+  let client!: pg.PoolClient;
   let state: "listening" | "reconnecting" | "stopped" = "listening";
 
   async function connect(): Promise<void> {
@@ -26,16 +26,10 @@ export async function startNotifyListener(
     state = "listening";
   }
 
-  function releaseClient(): void {
-    if (!client) return;
-    client.release(true);
-    client = null;
-  }
-
   function handleConnectionLost(): void {
     if (state === "stopped" || state === "reconnecting") return;
     state = "reconnecting";
-    releaseClient();
+    client.release(true);
     onConnectionLost();
     backOff(() => connect(), {
       numOfAttempts: Infinity,
@@ -54,7 +48,7 @@ export async function startNotifyListener(
   return {
     [Symbol.dispose]() {
       state = "stopped";
-      releaseClient();
+      client.release(true);
     },
   };
 }
