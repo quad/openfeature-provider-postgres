@@ -29,23 +29,6 @@ export class NotifyListener {
   }
 
   async start(): Promise<void> {
-    await this.connect();
-  }
-
-  async stop(): Promise<void> {
-    this.state = "stopped";
-    if (this.client) {
-      try {
-        await this.client.query("UNLISTEN *");
-      } catch {
-        // ignore — connection may already be dead
-      }
-      this.client.release(true);
-      this.client = null;
-    }
-  }
-
-  private async connect(): Promise<void> {
     this.client = await this.pool.connect();
 
     this.client.on("notification", () => {
@@ -64,6 +47,19 @@ export class NotifyListener {
     this.state = "listening";
   }
 
+  async stop(): Promise<void> {
+    this.state = "stopped";
+    if (this.client) {
+      try {
+        await this.client.query("UNLISTEN *");
+      } catch {
+        // ignore — connection may already be dead
+      }
+      this.client.release(true);
+      this.client = null;
+    }
+  }
+
   private handleDisconnect(): void {
     if (this.state === "stopped" || this.state === "reconnecting") return;
     this.state = "reconnecting";
@@ -73,7 +69,7 @@ export class NotifyListener {
   }
 
   private reconnect(): void {
-    backOff(() => this.connect(), {
+    backOff(() => this.start(), {
       numOfAttempts: Infinity,
       startingDelay: 500,
       maxDelay: 30_000,
