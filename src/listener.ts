@@ -49,22 +49,19 @@ export class NotifyListener {
 
   async [Symbol.asyncDispose](): Promise<void> {
     this.state = "stopped";
-    if (this.client) {
-      try {
-        await this.client.query("UNLISTEN *");
-      } catch {
-        // ignore — connection may already be dead
-      }
-      this.client.release(true);
-      this.client = null;
-    }
+    this.releaseClient();
+  }
+
+  private releaseClient(): void {
+    if (!this.client) return;
+    this.client.release(true);
+    this.client = null;
   }
 
   private handleDisconnect(): void {
     if (this.state === "stopped" || this.state === "reconnecting") return;
     this.state = "reconnecting";
-    this.client?.release(true);
-    this.client = null;
+    this.releaseClient();
     this.callbacks.onDisconnect();
     this.reconnect();
   }
