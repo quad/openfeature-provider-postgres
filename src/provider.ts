@@ -70,8 +70,8 @@ export class PostgresProvider implements Provider {
     if (this.state !== "ready") return;
     this.state = "disposed";
 
-    clearInterval(this.syncInterval!);
-    this.listener![Symbol.dispose]();
+    if (this.syncInterval) clearInterval(this.syncInterval);
+    this.listener?.[Symbol.dispose]();
   }
 
   async resolveBooleanEvaluation(
