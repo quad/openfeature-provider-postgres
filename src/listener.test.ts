@@ -1,6 +1,5 @@
 import { assert } from "jsr:@std/assert@1";
 import {
-  createClient,
   createPgLite,
   createPool,
 } from "./pglite-helper.test.ts";
@@ -13,7 +12,6 @@ Deno.test("NotifyListener > receives notifications via LISTEN/NOTIFY", async () 
     const listener = new NotifyListener({
       pool,
       channelName: "flag_change",
-      createClient: () => createClient(pglite),
     });
 
     const notifications: number[] = [];
@@ -46,7 +44,6 @@ Deno.test("NotifyListener > stops cleanly", async () => {
     const listener = new NotifyListener({
       pool,
       channelName: "flag_change",
-      createClient: () => createClient(pglite),
     });
 
     await listener.start({

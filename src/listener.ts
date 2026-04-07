@@ -10,33 +10,19 @@ export interface NotifyListenerCallbacks {
 export interface NotifyListenerOptions {
   pool: pg.Pool;
   channelName: string;
-  /** Override client creation (used for testing with PGlite). */
-  createClient?: () => pg.Client;
 }
 
 export class NotifyListener {
-  private client: pg.Client | null = null;
+  private client: pg.PoolClient | null = null;
   private callbacks: NotifyListenerCallbacks | null = null;
   private stopping = false;
   private reconnecting = false;
+  private readonly pool: pg.Pool;
   private readonly channelName: string;
-  private readonly createClient: () => pg.Client;
 
   constructor(options: NotifyListenerOptions) {
+    this.pool = options.pool;
     this.channelName = options.channelName;
-    this.createClient = options.createClient ??
-      (() => {
-        const opts =
-          (options.pool as unknown as { options: pg.PoolConfig }).options;
-        return new pg.Client({
-          host: opts.host,
-          port: opts.port,
-          database: opts.database,
-          user: opts.user,
-          password: opts.password,
-          ssl: opts.ssl,
-        } as pg.ClientConfig);
-      });
   }
 
   async start(callbacks: NotifyListenerCallbacks): Promise<void> {
@@ -54,17 +40,13 @@ export class NotifyListener {
       } catch {
         // ignore — connection may already be dead
       }
-      try {
-        await this.client.end();
-      } catch {
-        // ignore
-      }
+      this.client.release(true);
       this.client = null;
     }
   }
 
   private async connect(): Promise<void> {
-    this.client = this.createClient();
+    this.client = await this.pool.connect();
 
     this.client.on("notification", () => {
       this.callbacks?.onNotification();
@@ -78,7 +60,6 @@ export class NotifyListener {
       this.handleDisconnect();
     });
 
-    await this.client.connect();
     await this.client.query(`LISTEN ${quoteIdent(this.channelName)}`);
   }
 

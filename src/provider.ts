@@ -36,9 +36,6 @@ export class PostgresProvider implements Provider {
   private readonly schema: string;
   private readonly channelName: string;
   private readonly syncIntervalMs: number;
-  private readonly listenerOptions: ConstructorParameters<
-    typeof NotifyListener
-  >[0];
   private listener: NotifyListener | null = null;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private disposed = false;
@@ -49,11 +46,6 @@ export class PostgresProvider implements Provider {
     this.schema = options.schema ?? DEFAULT_SCHEMA;
     this.channelName = options.channelName ?? DEFAULT_CHANNEL;
     this.syncIntervalMs = options.syncIntervalMs ?? DEFAULT_SYNC_INTERVAL_MS;
-    this.listenerOptions = {
-      pool: this.pool,
-      channelName: this.channelName,
-      ...(options.createClient ? { createClient: options.createClient } : {}),
-    };
   }
 
   async initialize(_context?: EvaluationContext): Promise<void> {
@@ -62,7 +54,10 @@ export class PostgresProvider implements Provider {
 
     await this.syncCache();
 
-    this.listener = new NotifyListener(this.listenerOptions);
+    this.listener = new NotifyListener({
+      pool: this.pool,
+      channelName: this.channelName,
+    });
     await this.listener.start({
       onNotification: () => {
         this.syncCache().then((changed) => {

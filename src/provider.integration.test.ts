@@ -2,7 +2,6 @@ import { assertStrictEquals } from "jsr:@std/assert@1";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
 import { PostgresProvider } from "./index.ts";
 import {
-  createClient,
   createPgLite,
   createPool,
 } from "./pglite-helper.test.ts";
@@ -30,7 +29,6 @@ Deno.test("Integration: initialize → insert → ConfigurationChanged → evalu
   const provider = new PostgresProvider({
     pool,
     syncIntervalMs: 60_000_000,
-    createClient: () => createClient(pglite),
   });
 
   await OpenFeature.setProviderAndWait("test", provider);
@@ -73,7 +71,6 @@ Deno.test("Integration: AsyncDisposable cleanup is idempotent", async () => {
   const provider = new PostgresProvider({
     pool,
     syncIntervalMs: 60_000_000,
-    createClient: () => createClient(pglite),
   });
 
   await provider.initialize();

@@ -11,7 +11,6 @@ import {
   TypeMismatchError,
 } from "@openfeature/server-sdk";
 import {
-  createClient,
   createPgLite,
   createPool,
   logger,
@@ -30,7 +29,6 @@ async function setup() {
   const provider = new PostgresProvider({
     pool,
     syncIntervalMs: 60_000_000, // effectively disabled for tests
-    createClient: () => createClient(pglite),
   });
 
   return { pglite, pool, provider };
@@ -485,7 +483,6 @@ Deno.test("initialize > propagates syncCache errors to the caller", async () => 
   // Do NOT run migration — the query inside syncCache will fail (schema missing)
   const provider = new PostgresProvider({
     pool,
-    createClient: () => createClient(pglite),
   });
   try {
     await assertRejects(() => provider.initialize(), Error);
@@ -519,6 +516,7 @@ Deno.test("background sync > emits Stale when a notification-triggered sync fail
 
   let failQueries = false;
   const wrappedPool = {
+    connect: () => pool.connect(),
     query: (sql: string) => {
       if (failQueries) return Promise.reject(new Error("DB down"));
       return pool.query(sql);
@@ -528,7 +526,6 @@ Deno.test("background sync > emits Stale when a notification-triggered sync fail
   const provider = new PostgresProvider({
     pool: wrappedPool,
     syncIntervalMs: 60_000_000, // disabled — we trigger via NOTIFY instead
-    createClient: () => createClient(pglite),
   });
 
   await provider.initialize();
@@ -564,7 +561,6 @@ Deno.test("background sync > does not emit ConfigurationChanged when nothing cha
   const provider = new PostgresProvider({
     pool,
     syncIntervalMs: 60_000_000, // disabled — we trigger via NOTIFY instead
-    createClient: () => createClient(pglite),
   });
 
   await provider.initialize();
