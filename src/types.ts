@@ -1,4 +1,4 @@
-import type { Client, Pool } from "pg";
+import type { Client, ClientConfig, Pool } from "pg";
 
 export interface FlagData {
   flagKey: string;
@@ -21,6 +21,12 @@ export interface PostgresProviderOptions {
   syncIntervalMs?: number;
   /** Override client creation for the LISTEN connection (e.g. for testing with PGlite). */
   createClient?: () => Client;
+  /**
+   * Explicit config for the LISTEN connection client. An alternative to `createClient`
+   * when a connection string URL or non-standard pool setup makes the default
+   * pool-options extraction unreliable.
+   */
+  listenerClientConfig?: ClientConfig;
 }
 
 export const DEFAULT_SCHEMA = "openfeature";

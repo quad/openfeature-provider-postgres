@@ -12,6 +12,12 @@ export interface NotifyListenerOptions {
   channelName: string;
   /** Override client creation (used for testing with PGlite). */
   createClient?: () => pg.Client;
+  /**
+   * Explicit client config for the LISTEN connection. Used when `createClient`
+   * is not provided and the default pool-options extraction is unreliable
+   * (e.g. connection string URLs).
+   */
+  clientConfig?: pg.ClientConfig;
 }
 
 export class NotifyListener {
@@ -25,18 +31,20 @@ export class NotifyListener {
   constructor(options: NotifyListenerOptions) {
     this.channelName = options.channelName;
     this.createClient = options.createClient ??
-      (() => {
-        const { host, port, database, user, password, ssl } = options.pool
-          .options as unknown as Record<string, unknown>;
-        return new pg.Client({
-          host,
-          port,
-          database,
-          user,
-          password,
-          ssl,
-        } as pg.ClientConfig);
-      });
+      (options.clientConfig
+        ? () => new pg.Client(options.clientConfig!)
+        : () => {
+          const opts =
+            (options.pool as unknown as { options: pg.PoolConfig }).options;
+          return new pg.Client({
+            host: opts.host,
+            port: opts.port,
+            database: opts.database,
+            user: opts.user,
+            password: opts.password,
+            ssl: opts.ssl,
+          } as pg.ClientConfig);
+        });
   }
 
   async start(callbacks: NotifyListenerCallbacks): Promise<void> {
