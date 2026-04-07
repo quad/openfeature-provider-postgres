@@ -1,7 +1,7 @@
-CREATE SCHEMA IF NOT EXISTS openfeature;
+CREATE SCHEMA openfeature;
 
 -- Flag definitions
-CREATE TABLE IF NOT EXISTS openfeature.feature_flags (
+CREATE TABLE openfeature.feature_flags (
     flag_key        TEXT PRIMARY KEY,
     flag_type       TEXT NOT NULL CHECK (flag_type IN ('boolean', 'string', 'number', 'object')),
     enabled         BOOLEAN NOT NULL DEFAULT true,
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS openfeature.feature_flags (
 -- UNIQUE (flag_key, is_default) enforces at-most-one default per flag: NULLs are
 -- considered distinct in PostgreSQL unique indexes, so many NULL rows are allowed,
 -- but only one TRUE per flag_key.
-CREATE TABLE IF NOT EXISTS openfeature.flag_variants (
+CREATE TABLE openfeature.flag_variants (
     flag_key   TEXT NOT NULL,
     variant    TEXT NOT NULL,
     flag_type  TEXT NOT NULL,
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS openfeature.flag_variants (
 );
 
 -- Percentage rollouts per variant
-CREATE TABLE IF NOT EXISTS openfeature.flag_rollouts (
+CREATE TABLE openfeature.flag_rollouts (
     flag_key   TEXT NOT NULL,
     variant    TEXT NOT NULL,
     percentage INTEGER NOT NULL CHECK (percentage BETWEEN 0 AND 100),
@@ -41,36 +41,36 @@ CREATE TABLE IF NOT EXISTS openfeature.flag_rollouts (
 );
 
 -- Notify on any flag change
-CREATE OR REPLACE FUNCTION openfeature.notify_flag_change() RETURNS TRIGGER AS $$
+CREATE FUNCTION openfeature.notify_flag_change() RETURNS TRIGGER AS $$
 BEGIN
     NOTIFY flag_change;
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER feature_flags_notify
+CREATE TRIGGER feature_flags_notify
     AFTER INSERT OR DELETE ON openfeature.feature_flags
     FOR EACH ROW EXECUTE FUNCTION openfeature.notify_flag_change();
 
-CREATE OR REPLACE TRIGGER feature_flags_notify_update
+CREATE TRIGGER feature_flags_notify_update
     AFTER UPDATE ON openfeature.feature_flags
     FOR EACH ROW WHEN (OLD.* IS DISTINCT FROM NEW.*)
     EXECUTE FUNCTION openfeature.notify_flag_change();
 
-CREATE OR REPLACE TRIGGER flag_variants_notify
+CREATE TRIGGER flag_variants_notify
     AFTER INSERT OR DELETE ON openfeature.flag_variants
     FOR EACH ROW EXECUTE FUNCTION openfeature.notify_flag_change();
 
-CREATE OR REPLACE TRIGGER flag_variants_notify_update
+CREATE TRIGGER flag_variants_notify_update
     AFTER UPDATE ON openfeature.flag_variants
     FOR EACH ROW WHEN (OLD.* IS DISTINCT FROM NEW.*)
     EXECUTE FUNCTION openfeature.notify_flag_change();
 
-CREATE OR REPLACE TRIGGER flag_rollouts_notify
+CREATE TRIGGER flag_rollouts_notify
     AFTER INSERT OR DELETE ON openfeature.flag_rollouts
     FOR EACH ROW EXECUTE FUNCTION openfeature.notify_flag_change();
 
-CREATE OR REPLACE TRIGGER flag_rollouts_notify_update
+CREATE TRIGGER flag_rollouts_notify_update
     AFTER UPDATE ON openfeature.flag_rollouts
     FOR EACH ROW WHEN (OLD.* IS DISTINCT FROM NEW.*)
     EXECUTE FUNCTION openfeature.notify_flag_change();
