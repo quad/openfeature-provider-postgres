@@ -53,9 +53,6 @@ export class PostgresProvider implements Provider {
       pool: this.pool,
       channelName: this.channelName,
       ...(options.createClient ? { createClient: options.createClient } : {}),
-      ...(options.listenerClientConfig
-        ? { clientConfig: options.listenerClientConfig }
-        : {}),
     };
   }
 
