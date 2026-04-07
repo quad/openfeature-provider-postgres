@@ -14,16 +14,16 @@ export async function startNotifyListener(
 ): Promise<Disposable> {
   const { pool, channelName, onNotification, onConnectionLost, onReconnect } =
     options;
-  let client = await pool.connect();
   let state: "listening" | "reconnecting" | "stopped" = "listening";
 
-  async function reconnect(): Promise<void> {
-    client = await pool.connect();
-    client.on("notification", onNotification);
-    client.on("error", handleConnectionLost);
-    client.on("end", handleConnectionLost);
-    await client.query(`LISTEN ${pg.escapeIdentifier(channelName)}`);
+  async function connect(): Promise<pg.PoolClient> {
+    const c = await pool.connect();
+    c.on("notification", onNotification);
+    c.on("error", handleConnectionLost);
+    c.on("end", handleConnectionLost);
+    await c.query(`LISTEN ${pg.escapeIdentifier(channelName)}`);
     state = "listening";
+    return c;
   }
 
   function handleConnectionLost(): void {
@@ -31,7 +31,7 @@ export async function startNotifyListener(
     state = "reconnecting";
     client.release(true);
     onConnectionLost();
-    backOff(() => reconnect(), {
+    backOff(async () => { client = await connect(); }, {
       numOfAttempts: Infinity,
       maxDelay: 30_000,
       jitter: "full",
@@ -43,10 +43,7 @@ export async function startNotifyListener(
       });
   }
 
-  client.on("notification", onNotification);
-  client.on("error", handleConnectionLost);
-  client.on("end", handleConnectionLost);
-  await client.query(`LISTEN ${pg.escapeIdentifier(channelName)}`);
+  let client = await connect();
 
   return {
     [Symbol.dispose]() {
