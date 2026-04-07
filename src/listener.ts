@@ -12,11 +12,12 @@ export interface NotifyListenerOptions {
   channelName: string;
 }
 
+type ListenerState = "idle" | "listening" | "reconnecting" | "stopped";
+
 export class NotifyListener {
   private client: pg.PoolClient | null = null;
   private callbacks: NotifyListenerCallbacks | null = null;
-  private stopping = false;
-  private reconnecting = false;
+  private state: ListenerState = "idle";
   private readonly pool: pg.Pool;
   private readonly channelName: string;
 
@@ -27,12 +28,11 @@ export class NotifyListener {
 
   async start(callbacks: NotifyListenerCallbacks): Promise<void> {
     this.callbacks = callbacks;
-    this.stopping = false;
     await this.connect();
   }
 
   async stop(): Promise<void> {
-    this.stopping = true;
+    this.state = "stopped";
     this.callbacks = null;
     if (this.client) {
       try {
@@ -61,11 +61,12 @@ export class NotifyListener {
     });
 
     await this.client.query(`LISTEN ${quoteIdent(this.channelName)}`);
+    this.state = "listening";
   }
 
   private handleDisconnect(): void {
-    if (this.stopping || this.reconnecting) return;
-    this.reconnecting = true;
+    if (this.state === "stopped" || this.state === "reconnecting") return;
+    this.state = "reconnecting";
     this.client = null;
     this.callbacks?.onDisconnect();
     this.reconnect();
@@ -76,10 +77,9 @@ export class NotifyListener {
       numOfAttempts: Infinity,
       startingDelay: 500,
       maxDelay: 30_000,
-      retry: () => !this.stopping,
+      retry: () => this.state !== "stopped",
     })
       .then(() => {
-        this.reconnecting = false;
         this.callbacks?.onReconnect();
       })
       .catch(() => {
