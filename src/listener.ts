@@ -47,7 +47,7 @@ export class NotifyListener {
     this.state = "listening";
   }
 
-  async stop(): Promise<void> {
+  async [Symbol.asyncDispose](): Promise<void> {
     this.state = "stopped";
     if (this.client) {
       try {

@@ -31,7 +31,7 @@ Deno.test("NotifyListener > receives notifications via LISTEN/NOTIFY", async () 
       "should have received at least one notification",
     );
 
-    await listener.stop();
+    await listener[Symbol.asyncDispose]();
   } finally {
     await pool.end();
     await pglite.close();
@@ -55,9 +55,9 @@ Deno.test("NotifyListener > stops cleanly", async () => {
     await listener.start();
 
     // Should not throw
-    await listener.stop();
+    await listener[Symbol.asyncDispose]();
     // Idempotent stop
-    await listener.stop();
+    await listener[Symbol.asyncDispose]();
   } finally {
     await pool.end();
     await pglite.close();

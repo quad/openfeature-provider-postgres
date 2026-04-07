@@ -107,7 +107,7 @@ export class PostgresProvider implements Provider {
     }
 
     if (this.listener) {
-      await this.listener.stop();
+      await this.listener[Symbol.asyncDispose]();
       this.listener = null;
     }
   }
