@@ -63,6 +63,7 @@ export class NotifyListener {
   private handleDisconnect(): void {
     if (this.state === "stopped" || this.state === "reconnecting") return;
     this.state = "reconnecting";
+    this.client?.release(true);
     this.client = null;
     this.callbacks.onDisconnect();
     this.reconnect();
@@ -72,6 +73,7 @@ export class NotifyListener {
     backOff(() => this.start(), {
       numOfAttempts: Infinity,
       maxDelay: 30_000,
+      jitter: "full",
       retry: () => this.state !== "stopped",
     })
       .then(() => {
