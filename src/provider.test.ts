@@ -512,7 +512,7 @@ Deno.test("initialize > double-call is a no-op", async () => {
 // Background sync behaviour
 // ---------------------------------------------------------------------------
 
-Deno.test("background sync > emits Stale when periodic sync fails", async () => {
+Deno.test("background sync > emits Stale when a notification-triggered sync fails", async () => {
   const pglite = createPgLite();
   const pool = createPool(pglite);
   await pglite.exec(migration);
@@ -527,16 +527,20 @@ Deno.test("background sync > emits Stale when periodic sync fails", async () => 
 
   const provider = new PostgresProvider({
     pool: wrappedPool,
-    syncIntervalMs: 10, // fire quickly
+    syncIntervalMs: 60_000_000, // disabled — we trigger via NOTIFY instead
     createClient: () => createClient(pglite),
   });
 
   await provider.initialize();
   failQueries = true;
 
-  await new Promise<void>((resolve) => {
+  const stale = new Promise<void>((resolve) => {
     provider.events.addHandler(ProviderEvents.Stale, () => resolve());
   });
+
+  // Trigger onNotification path via a direct NOTIFY
+  await pool.query("NOTIFY flag_change");
+  await stale;
 
   await provider.onClose();
   await pool.end();
@@ -548,9 +552,18 @@ Deno.test("background sync > does not emit ConfigurationChanged when nothing cha
   const pool = createPool(pglite);
   await pglite.exec(migration);
 
+  await pool.query(`
+    INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+    VALUES ('stable-flag', 'boolean')
+  `);
+  await pool.query(`
+    INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
+    VALUES ('stable-flag', 'on', 'boolean', 'true', true)
+  `);
+
   const provider = new PostgresProvider({
     pool,
-    syncIntervalMs: 10, // fire quickly
+    syncIntervalMs: 60_000_000, // disabled — we trigger via NOTIFY instead
     createClient: () => createClient(pglite),
   });
 
@@ -561,8 +574,10 @@ Deno.test("background sync > does not emit ConfigurationChanged when nothing cha
     changeCount++;
   });
 
-  // Allow several sync cycles to fire
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  // Trigger a sync via NOTIFY without changing any data — cache is identical,
+  // so ConfigurationChanged must not fire.
+  await pool.query("NOTIFY flag_change");
+  await new Promise((resolve) => setTimeout(resolve, 200));
 
   assertStrictEquals(changeCount, 0, "should not fire when cache is unchanged");
 
