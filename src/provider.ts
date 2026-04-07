@@ -222,7 +222,7 @@ export class PostgresProvider implements Provider {
     const grouped = new Map<string, FlagData>();
 
     for (const row of result.rows) {
-      const flag = getOrInsert(grouped, row.flag_key, () => ({
+      const flag = getOrInsertComputed(grouped, row.flag_key, () => ({
         flagKey: row.flag_key,
         flagType: row.flag_type,
         defaultVariant: "",
@@ -251,7 +251,7 @@ export class PostgresProvider implements Provider {
   }
 }
 
-function getOrInsert<K, V>(map: Map<K, V>, key: K, create: () => V): V {
+function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
   let val = map.get(key);
   if (val === undefined) {
     val = create();
