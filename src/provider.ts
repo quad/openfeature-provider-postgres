@@ -67,18 +67,11 @@ export class PostgresProvider implements Provider {
   }
 
   async onClose(): Promise<void> {
-    if (this.state === "disposed") return;
+    if (this.state !== "ready") return;
     this.state = "disposed";
 
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval);
-      this.syncInterval = null;
-    }
-
-    if (this.listener) {
-      this.listener[Symbol.dispose]();
-      this.listener = null;
-    }
+    clearInterval(this.syncInterval!);
+    this.listener![Symbol.dispose]();
   }
 
   async resolveBooleanEvaluation(
