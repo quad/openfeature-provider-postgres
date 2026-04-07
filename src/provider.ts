@@ -77,7 +77,7 @@ export class PostgresProvider implements Provider {
             this.events.emit(ProviderEvents.Stale);
           });
         },
-        onDisconnect: () => {
+        onConnectionLost: () => {
           this.events.emit(ProviderEvents.Stale);
         },
       },

@@ -16,7 +16,7 @@ Deno.test("NotifyListener > receives notifications via LISTEN/NOTIFY", async () 
       callbacks: {
         onNotification: () => notifications.push(Date.now()),
         onReconnect: () => {},
-        onDisconnect: () => {},
+        onConnectionLost: () => {},
       },
     });
 
@@ -48,7 +48,7 @@ Deno.test("NotifyListener > stops cleanly", async () => {
       callbacks: {
         onNotification: () => {},
         onReconnect: () => {},
-        onDisconnect: () => {},
+        onConnectionLost: () => {},
       },
     });
 

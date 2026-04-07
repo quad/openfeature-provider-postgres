@@ -4,7 +4,7 @@ import pg from "pg";
 export interface NotifyListenerCallbacks {
   onNotification: () => void;
   onReconnect: () => void;
-  onDisconnect: () => void;
+  onConnectionLost: () => void;
 }
 
 export interface NotifyListenerOptions {
@@ -62,7 +62,7 @@ export class NotifyListener {
     if (this.state === "stopped" || this.state === "reconnecting") return;
     this.state = "reconnecting";
     this.releaseClient();
-    this.callbacks.onDisconnect();
+    this.callbacks.onConnectionLost();
     this.reconnect();
   }
 
