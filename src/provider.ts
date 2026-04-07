@@ -222,18 +222,14 @@ export class PostgresProvider implements Provider {
     const grouped = new Map<string, FlagData>();
 
     for (const row of result.rows) {
-      let flag = grouped.get(row.flag_key);
-      if (!flag) {
-        flag = {
-          flagKey: row.flag_key,
-          flagType: row.flag_type,
-          defaultVariant: "",
-          enabled: row.enabled,
-          variants: new Map(),
-          rollout: null,
-        };
-        grouped.set(row.flag_key, flag);
-      }
+      const flag = getOrInsert(grouped, row.flag_key, () => ({
+        flagKey: row.flag_key,
+        flagType: row.flag_type,
+        defaultVariant: "",
+        enabled: row.enabled,
+        variants: new Map(),
+        rollout: null,
+      }));
 
       flag.variants.set(row.variant, row.value);
 
@@ -253,5 +249,14 @@ export class PostgresProvider implements Provider {
     this.cache = grouped;
     return true;
   }
+}
+
+function getOrInsert<K, V>(map: Map<K, V>, key: K, create: () => V): V {
+  let val = map.get(key);
+  if (val === undefined) {
+    val = create();
+    map.set(key, val);
+  }
+  return val;
 }
 
