@@ -43,7 +43,7 @@ export class NotifyListener {
       this.handleDisconnect();
     });
 
-    await this.client.query(`LISTEN ${quoteIdent(this.channelName)}`);
+    await this.client.query(`LISTEN ${pg.escapeIdentifier(this.channelName)}`);
     this.state = "listening";
   }
 
@@ -84,6 +84,3 @@ export class NotifyListener {
   }
 }
 
-function quoteIdent(ident: string): string {
-  return `"${ident.replace(/"/g, '""')}"`;
-}

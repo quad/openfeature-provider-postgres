@@ -14,6 +14,7 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
+import pg from "pg";
 import { NotifyListener } from "./listener.ts";
 import type {
   FlagData,
@@ -227,7 +228,7 @@ export class PostgresProvider implements Provider {
   }
 
   private async syncCache(): Promise<boolean> {
-    const s = quoteIdent(this.schema);
+    const s = pg.escapeIdentifier(this.schema);
     const result = await this.pool.query(`
       SELECT
         ff.flag_key,
@@ -303,6 +304,3 @@ function serializeCache(cache: Map<string, FlagData>): string {
   );
 }
 
-function quoteIdent(ident: string): string {
-  return `"${ident.replace(/"/g, '""')}"`;
-}
