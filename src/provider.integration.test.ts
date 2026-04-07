@@ -63,7 +63,7 @@ Deno.test("Integration: initialize → insert → ConfigurationChanged → evalu
   await pglite.close();
 });
 
-Deno.test("Integration: AsyncDisposable cleanup is idempotent", async () => {
+Deno.test("Integration: onClose cleanup is idempotent", async () => {
   const pglite = createPgLite();
   const pool = createPool(pglite);
   await pglite.exec(migration);
@@ -75,9 +75,9 @@ Deno.test("Integration: AsyncDisposable cleanup is idempotent", async () => {
 
   await provider.initialize();
 
-  // Double dispose should not throw
-  await provider[Symbol.asyncDispose]();
-  await provider[Symbol.asyncDispose]();
+  // Double close should not throw
+  await provider.onClose();
+  await provider.onClose();
 
   await pool.end();
   await pglite.close();

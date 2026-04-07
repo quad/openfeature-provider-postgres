@@ -69,10 +69,6 @@ export class PostgresProvider implements Provider {
   }
 
   async onClose(): Promise<void> {
-    await this[Symbol.asyncDispose]();
-  }
-
-  async [Symbol.asyncDispose](): Promise<void> {
     if (this.state === "disposed") return;
     this.state = "disposed";
 
