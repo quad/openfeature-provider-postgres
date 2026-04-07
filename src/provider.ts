@@ -39,8 +39,7 @@ export class PostgresProvider implements Provider {
   private readonly syncIntervalMs: number;
   private listener: Disposable | null = null;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
-  private disposed = false;
-  private initialized = false;
+  private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
 
   constructor(options: PostgresProviderOptions) {
     this.pool = options.pool;
@@ -50,8 +49,7 @@ export class PostgresProvider implements Provider {
   }
 
   async initialize(_context?: EvaluationContext): Promise<void> {
-    if (this.initialized) return;
-    this.initialized = true;
+    if (this.state !== "uninitialized") return;
 
     await this.syncCache();
 
@@ -67,6 +65,7 @@ export class PostgresProvider implements Provider {
 
     this.syncInterval = setInterval(() => this.syncAndEmit(), this.syncIntervalMs);
     this.syncInterval.unref();
+    this.state = "ready";
   }
 
   async onClose(): Promise<void> {
@@ -74,8 +73,8 @@ export class PostgresProvider implements Provider {
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    if (this.disposed) return;
-    this.disposed = true;
+    if (this.state === "disposed") return;
+    this.state = "disposed";
 
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
