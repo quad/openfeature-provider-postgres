@@ -1,3 +1,4 @@
+import { clearInterval, setInterval } from "node:timers";
 import type {
   EvaluationContext,
   JsonValue,
@@ -41,6 +42,7 @@ export class PostgresProvider implements Provider {
   private listener: NotifyListener | null = null;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private disposed = false;
+  private initialized = false;
 
   constructor(options: PostgresProviderOptions) {
     this.pool = options.pool;
@@ -51,22 +53,32 @@ export class PostgresProvider implements Provider {
       pool: this.pool,
       channelName: this.channelName,
       ...(options.createClient ? { createClient: options.createClient } : {}),
+      ...(options.listenerClientConfig
+        ? { clientConfig: options.listenerClientConfig }
+        : {}),
     };
   }
 
-  async initialize(): Promise<void> {
+  async initialize(_context?: EvaluationContext): Promise<void> {
+    if (this.initialized) return;
+    this.initialized = true;
+
     await this.syncCache();
 
     this.listener = new NotifyListener(this.listenerOptions);
     await this.listener.start({
       onNotification: () => {
-        this.syncCache().then(() => {
-          this.events.emit(ProviderEvents.ConfigurationChanged);
+        this.syncCache().then((changed) => {
+          if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
+        }).catch(() => {
+          this.events.emit(ProviderEvents.Stale);
         });
       },
       onReconnect: () => {
-        this.syncCache().then(() => {
-          this.events.emit(ProviderEvents.ConfigurationChanged);
+        this.syncCache().then((changed) => {
+          if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
+        }).catch(() => {
+          this.events.emit(ProviderEvents.Stale);
         });
       },
       onDisconnect: () => {
@@ -75,10 +87,13 @@ export class PostgresProvider implements Provider {
     });
 
     this.syncInterval = setInterval(() => {
-      this.syncCache().then(() => {
-        this.events.emit(ProviderEvents.ConfigurationChanged);
+      this.syncCache().then((changed) => {
+        if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
+      }).catch(() => {
+        this.events.emit(ProviderEvents.Stale);
       });
     }, this.syncIntervalMs);
+    this.syncInterval.unref();
   }
 
   async onClose(): Promise<void> {
@@ -168,7 +183,7 @@ export class PostgresProvider implements Provider {
 
     if (flag.rollout && context.targetingKey) {
       chosenVariant = await this.pickRolloutVariant(flag, context.targetingKey);
-      reason = "SPLIT";
+      reason = StandardResolutionReasons.SPLIT;
     } else {
       chosenVariant = flag.defaultVariant;
       reason = StandardResolutionReasons.STATIC;
@@ -190,10 +205,21 @@ export class PostgresProvider implements Provider {
   ): Promise<string> {
     const data = new TextEncoder().encode(targetingKey + flag.flagKey);
     const buf = await crypto.subtle.digest("SHA-256", data);
-    const bucket = new DataView(buf).getUint32(0, false) % 100;
+
+    // Bucket divisor: Math.max(total, 100)
+    //
+    // When percentages sum to ≤ 100: divisor is 100. Unallocated traffic
+    // (100 − total) falls through the loop and returns the default variant.
+    //
+    // When percentages sum to > 100 (misconfiguration): divisor is the actual
+    // total, giving proportional normalization — e.g. 70/70 produces a 50/50
+    // split rather than silently skewing the distribution toward earlier entries.
+    const rollout = flag.rollout ?? [];
+    const total = rollout.reduce((sum, r) => sum + r.percentage, 0);
+    const bucket = new DataView(buf).getUint32(0, false) % Math.max(total, 100);
 
     let cumulative = 0;
-    for (const entry of flag.rollout ?? []) {
+    for (const entry of rollout) {
       cumulative += entry.percentage;
       if (bucket < cumulative) {
         return entry.variant;
@@ -203,81 +229,81 @@ export class PostgresProvider implements Provider {
     return flag.defaultVariant;
   }
 
-  private async syncCache(): Promise<void> {
-    try {
-      const s = quoteIdent(this.schema);
-      const result = await this.pool.query(`
-        SELECT
-          ff.flag_key,
-          ff.flag_type,
-          ff.default_variant,
-          ff.enabled,
-          fv.variant,
-          fv.value,
-          fr.percentage
-        FROM ${s}.feature_flags ff
-        JOIN ${s}.flag_variants fv USING (flag_key, flag_type)
-        LEFT JOIN ${s}.flag_rollouts fr USING (flag_key, variant)
-      `);
+  private async syncCache(): Promise<boolean> {
+    const s = quoteIdent(this.schema);
+    const result = await this.pool.query(`
+      SELECT
+        ff.flag_key,
+        ff.flag_type,
+        ff.enabled,
+        fv.variant,
+        fv.value,
+        fv.is_default,
+        fr.percentage
+      FROM ${s}.feature_flags ff
+      JOIN ${s}.flag_variants fv USING (flag_key, flag_type)
+      LEFT JOIN ${s}.flag_rollouts fr USING (flag_key, variant)
+    `);
 
-      const grouped = new Map<string, FlagData>();
+    const grouped = new Map<string, FlagData>();
 
-      for (const row of result.rows) {
-        let flag = grouped.get(row.flag_key);
-        if (!flag) {
-          flag = {
-            flagKey: row.flag_key,
-            flagType: row.flag_type,
-            defaultVariant: row.default_variant,
-            enabled: row.enabled,
-            variants: new Map(),
-            rollout: null,
-          };
-          grouped.set(row.flag_key, flag);
-        }
-
-        flag.variants.set(row.variant, row.value);
-
-        if (row.percentage != null) {
-          if (!flag.rollout) flag.rollout = [];
-          // Avoid duplicate rollout entries when JOIN produces multiple rows
-          if (
-            !flag.rollout.some((r: RolloutEntry) => r.variant === row.variant)
-          ) {
-            flag.rollout.push({
-              variant: row.variant,
-              percentage: row.percentage,
-            });
-          }
-        }
+    for (const row of result.rows) {
+      let flag = grouped.get(row.flag_key);
+      if (!flag) {
+        flag = {
+          flagKey: row.flag_key,
+          flagType: row.flag_type,
+          defaultVariant: "",
+          enabled: row.enabled,
+          variants: new Map(),
+          rollout: null,
+        };
+        grouped.set(row.flag_key, flag);
       }
 
-      // Validate default variants
-      for (const flag of grouped.values()) {
-        if (!flag.variants.has(flag.defaultVariant)) {
-          console.warn(
-            `Flag "${flag.flagKey}": default_variant "${flag.defaultVariant}" not found in variants`,
-          );
-        }
-        // Warn if rollout percentages exceed 100
-        if (flag.rollout) {
-          const total = flag.rollout.reduce(
-            (sum: number, r: RolloutEntry) => sum + r.percentage,
-            0,
-          );
-          if (total > 100) {
-            console.warn(
-              `Flag "${flag.flagKey}": rollout percentages sum to ${total} (>100)`,
-            );
-          }
-        }
+      flag.variants.set(row.variant, row.value);
+
+      if (row.is_default === true) {
+        flag.defaultVariant = row.variant;
       }
 
-      this.cache = grouped;
-    } catch (err) {
-      console.error("Failed to sync flag cache:", err);
+      if (row.percentage != null) {
+        if (!flag.rollout) flag.rollout = [];
+        // Avoid duplicate rollout entries when JOIN produces multiple rows
+        if (
+          !flag.rollout.some((r: RolloutEntry) => r.variant === row.variant)
+        ) {
+          flag.rollout.push({
+            variant: row.variant,
+            percentage: row.percentage,
+          });
+        }
+      }
     }
+
+    const changed = serializeCache(grouped) !== serializeCache(this.cache);
+    this.cache = grouped;
+    return changed;
   }
+}
+
+function serializeCache(cache: Map<string, FlagData>): string {
+  return JSON.stringify(
+    [...cache.entries()]
+      .sort(([a], [b]) => a < b ? -1 : 1)
+      .map(([k, f]) => [
+        k,
+        {
+          ...f,
+          variants: [...f.variants.entries()].sort(([a], [b]) =>
+            a < b ? -1 : 1
+          ),
+          rollout: f.rollout
+            ? [...f.rollout].sort((a, b) => a.variant < b.variant ? -1 : 1)
+            : null,
+        },
+      ]),
+  );
 }
 
 function quoteIdent(ident: string): string {
