@@ -19,9 +19,9 @@ export async function startNotifyListener(
 
   async function connect(): Promise<void> {
     client = await pool.connect();
-    client.on("notification", () => onNotification());
-    client.on("error", () => handleConnectionLost());
-    client.on("end", () => handleConnectionLost());
+    client.on("notification", onNotification);
+    client.on("error", handleConnectionLost);
+    client.on("end", handleConnectionLost);
     await client.query(`LISTEN ${pg.escapeIdentifier(channelName)}`);
     state = "listening";
   }
