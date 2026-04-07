@@ -63,8 +63,7 @@ export class PostgresProvider implements Provider {
       },
     });
 
-    this.syncInterval = setInterval(() => this.syncAndEmit(), this.syncIntervalMs);
-    this.syncInterval.unref();
+    this.syncInterval = setInterval(() => this.syncAndEmit(), this.syncIntervalMs).unref();
     this.state = "ready";
   }
 
