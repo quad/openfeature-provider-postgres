@@ -8,7 +8,7 @@ import {
 } from "./pglite-helper.test.ts";
 
 const migration = Deno.readTextFileSync(
-  new URL("../migration.sql", import.meta.url),
+  new URL("../schema.sql", import.meta.url),
 );
 
 Deno.test("Integration: initialize → insert → ConfigurationChanged → evaluate", async () => {

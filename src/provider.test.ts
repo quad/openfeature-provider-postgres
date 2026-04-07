@@ -19,7 +19,7 @@ import {
 import { PostgresProvider } from "./provider.ts";
 
 const migration = Deno.readTextFileSync(
-  new URL("../migration.sql", import.meta.url),
+  new URL("../schema.sql", import.meta.url),
 );
 
 async function setup() {
