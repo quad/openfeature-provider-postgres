@@ -58,36 +58,14 @@ export class PostgresProvider implements Provider {
     this.listener = await startNotifyListener({
       pool: this.pool,
       channelName: this.channelName,
-      onNotification: () => {
-        this.syncCache().then((changed) => {
-          if (changed) {
-            this.events.emit(ProviderEvents.ConfigurationChanged);
-          }
-        }).catch(() => {
-          this.events.emit(ProviderEvents.Stale);
-        });
-      },
-      onReconnect: () => {
-        this.syncCache().then((changed) => {
-          if (changed) {
-            this.events.emit(ProviderEvents.ConfigurationChanged);
-          }
-        }).catch(() => {
-          this.events.emit(ProviderEvents.Stale);
-        });
-      },
+      onNotification: () => this.syncAndEmit(),
+      onReconnect: () => this.syncAndEmit(),
       onConnectionLost: () => {
         this.events.emit(ProviderEvents.Stale);
       },
     });
 
-    this.syncInterval = setInterval(() => {
-      this.syncCache().then((changed) => {
-        if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
-      }).catch(() => {
-        this.events.emit(ProviderEvents.Stale);
-      });
-    }, this.syncIntervalMs);
+    this.syncInterval = setInterval(() => this.syncAndEmit(), this.syncIntervalMs);
     this.syncInterval.unref();
   }
 
@@ -222,6 +200,14 @@ export class PostgresProvider implements Provider {
     }
 
     return flag.defaultVariant;
+  }
+
+  private syncAndEmit(): void {
+    this.syncCache().then((changed) => {
+      if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
+    }).catch(() => {
+      this.events.emit(ProviderEvents.Stale);
+    });
   }
 
   private async syncCache(): Promise<boolean> {
