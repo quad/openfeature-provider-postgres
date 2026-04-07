@@ -32,6 +32,7 @@ export class PostgresProvider implements Provider {
   events: OpenFeatureEventEmitter = new OpenFeatureEventEmitter();
 
   private cache = new Map<string, FlagData>();
+  private lastResultJson = "";
   private readonly pool: PostgresProviderOptions["pool"];
   private readonly schema: string;
   private readonly channelName: string;
@@ -211,7 +212,12 @@ export class PostgresProvider implements Provider {
       FROM ${s}.feature_flags ff
       JOIN ${s}.flag_variants fv USING (flag_key, flag_type)
       LEFT JOIN ${s}.flag_rollouts fr USING (flag_key, variant)
+      ORDER BY ff.flag_key, fv.variant
     `);
+
+    const resultJson = JSON.stringify(result.rows);
+    if (resultJson === this.lastResultJson) return false;
+    this.lastResultJson = resultJson;
 
     const grouped = new Map<string, FlagData>();
 
@@ -244,28 +250,8 @@ export class PostgresProvider implements Provider {
       }
     }
 
-    const changed = serializeCache(grouped) !== serializeCache(this.cache);
     this.cache = grouped;
-    return changed;
+    return true;
   }
-}
-
-function serializeCache(cache: Map<string, FlagData>): string {
-  return JSON.stringify(
-    [...cache.entries()]
-      .sort(([a], [b]) => a < b ? -1 : 1)
-      .map(([k, f]) => [
-        k,
-        {
-          ...f,
-          variants: [...f.variants.entries()].sort(([a], [b]) =>
-            a < b ? -1 : 1
-          ),
-          rollout: f.rollout
-            ? [...f.rollout].sort((a, b) => a.variant < b.variant ? -1 : 1)
-            : null,
-        },
-      ]),
-  );
 }
 
