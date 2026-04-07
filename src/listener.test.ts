@@ -9,17 +9,18 @@ Deno.test("NotifyListener > receives notifications via LISTEN/NOTIFY", async () 
   const pglite = createPgLite();
   const pool = createPool(pglite);
   try {
+    const notifications: number[] = [];
     const listener = new NotifyListener({
       pool,
       channelName: "flag_change",
+      callbacks: {
+        onNotification: () => notifications.push(Date.now()),
+        onReconnect: () => {},
+        onDisconnect: () => {},
+      },
     });
 
-    const notifications: number[] = [];
-    await listener.start({
-      onNotification: () => notifications.push(Date.now()),
-      onReconnect: () => {},
-      onDisconnect: () => {},
-    });
+    await listener.start();
 
     // Send a notification via the pool (separate connection)
     await pool.query("NOTIFY flag_change");
@@ -44,13 +45,14 @@ Deno.test("NotifyListener > stops cleanly", async () => {
     const listener = new NotifyListener({
       pool,
       channelName: "flag_change",
+      callbacks: {
+        onNotification: () => {},
+        onReconnect: () => {},
+        onDisconnect: () => {},
+      },
     });
 
-    await listener.start({
-      onNotification: () => {},
-      onReconnect: () => {},
-      onDisconnect: () => {},
-    });
+    await listener.start();
 
     // Should not throw
     await listener.stop();

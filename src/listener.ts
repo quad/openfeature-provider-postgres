@@ -10,30 +10,30 @@ export interface NotifyListenerCallbacks {
 export interface NotifyListenerOptions {
   pool: pg.Pool;
   channelName: string;
+  callbacks: NotifyListenerCallbacks;
 }
 
 type ListenerState = "idle" | "listening" | "reconnecting" | "stopped";
 
 export class NotifyListener {
   private client: pg.PoolClient | null = null;
-  private callbacks: NotifyListenerCallbacks | null = null;
   private state: ListenerState = "idle";
   private readonly pool: pg.Pool;
   private readonly channelName: string;
+  private readonly callbacks: NotifyListenerCallbacks;
 
   constructor(options: NotifyListenerOptions) {
     this.pool = options.pool;
     this.channelName = options.channelName;
+    this.callbacks = options.callbacks;
   }
 
-  async start(callbacks: NotifyListenerCallbacks): Promise<void> {
-    this.callbacks = callbacks;
+  async start(): Promise<void> {
     await this.connect();
   }
 
   async stop(): Promise<void> {
     this.state = "stopped";
-    this.callbacks = null;
     if (this.client) {
       try {
         await this.client.query("UNLISTEN *");
@@ -49,7 +49,7 @@ export class NotifyListener {
     this.client = await this.pool.connect();
 
     this.client.on("notification", () => {
-      this.callbacks?.onNotification();
+      this.callbacks.onNotification();
     });
 
     this.client.on("error", () => {
@@ -68,7 +68,7 @@ export class NotifyListener {
     if (this.state === "stopped" || this.state === "reconnecting") return;
     this.state = "reconnecting";
     this.client = null;
-    this.callbacks?.onDisconnect();
+    this.callbacks.onDisconnect();
     this.reconnect();
   }
 
@@ -80,7 +80,7 @@ export class NotifyListener {
       retry: () => this.state !== "stopped",
     })
       .then(() => {
-        this.callbacks?.onReconnect();
+        this.callbacks.onReconnect();
       })
       .catch(() => {
         // stopped during reconnection — nothing to do

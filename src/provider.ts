@@ -57,26 +57,31 @@ export class PostgresProvider implements Provider {
     this.listener = new NotifyListener({
       pool: this.pool,
       channelName: this.channelName,
-    });
-    await this.listener.start({
-      onNotification: () => {
-        this.syncCache().then((changed) => {
-          if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
-        }).catch(() => {
+      callbacks: {
+        onNotification: () => {
+          this.syncCache().then((changed) => {
+            if (changed) {
+              this.events.emit(ProviderEvents.ConfigurationChanged);
+            }
+          }).catch(() => {
+            this.events.emit(ProviderEvents.Stale);
+          });
+        },
+        onReconnect: () => {
+          this.syncCache().then((changed) => {
+            if (changed) {
+              this.events.emit(ProviderEvents.ConfigurationChanged);
+            }
+          }).catch(() => {
+            this.events.emit(ProviderEvents.Stale);
+          });
+        },
+        onDisconnect: () => {
           this.events.emit(ProviderEvents.Stale);
-        });
-      },
-      onReconnect: () => {
-        this.syncCache().then((changed) => {
-          if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
-        }).catch(() => {
-          this.events.emit(ProviderEvents.Stale);
-        });
-      },
-      onDisconnect: () => {
-        this.events.emit(ProviderEvents.Stale);
+        },
       },
     });
+    await this.listener.start();
 
     this.syncInterval = setInterval(() => {
       this.syncCache().then((changed) => {
