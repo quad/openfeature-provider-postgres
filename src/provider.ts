@@ -238,7 +238,8 @@ export class PostgresProvider implements Provider {
       }
 
       if (row.percentage != null) {
-        (flag.rollout ||= []).push({
+        flag.rollout ||= [];
+        flag.rollout.push({
           variant: row.variant,
           percentage: row.percentage,
         });
