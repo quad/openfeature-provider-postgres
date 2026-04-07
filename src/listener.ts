@@ -71,7 +71,6 @@ export class NotifyListener {
   private reconnect(): void {
     backOff(() => this.start(), {
       numOfAttempts: Infinity,
-      startingDelay: 500,
       maxDelay: 30_000,
       retry: () => this.state !== "stopped",
     })
