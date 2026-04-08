@@ -5,36 +5,33 @@ import {
   assertStrictEquals,
 } from "jsr:@std/assert@1";
 import {
+  DefaultLogger,
   FlagNotFoundError,
   ProviderEvents,
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
-import { PGlite } from "@electric-sql/pglite";
-import { DefaultLogger } from "@openfeature/server-sdk";
-import { createPool } from "./pglite-helper.test.ts";
+import type pg from "pg";
+import { withDb } from "./pglite-helper.test.ts";
 import { PostgresProvider } from "./provider.ts";
 
 const logger = new DefaultLogger();
 
-const migration = Deno.readTextFileSync(
-  new URL("../schema.sql", import.meta.url),
-);
-
-async function setup() {
-  const pglite = new PGlite();
-  const pool = createPool(pglite);
-  await pglite.exec(migration);
-
-  const provider = new PostgresProvider({
-    pool,
+async function withProvider(
+  fn: (pool: pg.Pool, provider: PostgresProvider) => Promise<void>,
+) {
+  await withDb(async (pool) => {
+    const provider = new PostgresProvider({ pool });
+    try {
+      await fn(pool, provider);
+    } finally {
+      await provider.onClose();
+    }
   });
-
-  return { pglite, pool, provider };
 }
 
 /** Wraps pool.connect to capture the listener's internal client for testing. */
-function interceptListenerClient(pool: ReturnType<typeof createPool>) {
+function interceptListenerClient(pool: pg.Pool) {
   let client: { emit: (event: string, ...args: unknown[]) => void } | null =
     null;
   const origConnect = pool.connect.bind(pool);
@@ -95,9 +92,8 @@ const flagResolutionCases = [
 ];
 
 for (const tc of flagResolutionCases) {
-  Deno.test(`flag resolution > resolves ${tc.name} flags`, async () => {
-    const { pglite, pool, provider } = await setup();
-    try {
+  Deno.test(`flag resolution > resolves ${tc.name} flags`, () =>
+    withProvider(async (pool, provider) => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type)
         VALUES ('${tc.flagKey}', '${tc.flagType}')
@@ -119,17 +115,11 @@ for (const tc of flagResolutionCases) {
       assertEquals(result.value, tc.expectedValue);
       assertStrictEquals(result.variant, tc.variant);
       assertStrictEquals(result.reason, StandardResolutionReasons.STATIC);
-    } finally {
-      await provider.onClose();
-      await pool.end();
-      await pglite.close();
-    }
-  });
+    }));
 }
 
-Deno.test("flag resolution > disabled flag returns default value with DISABLED reason", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
+Deno.test("flag resolution > disabled flag returns default value with DISABLED reason", () =>
+  withProvider(async (pool, provider) => {
     await pool.query(`
       INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled)
       VALUES ('disabled-flag', 'boolean', false)
@@ -149,16 +139,10 @@ Deno.test("flag resolution > disabled flag returns default value with DISABLED r
     );
     assertStrictEquals(result.value, false); // default value, not stored value
     assertStrictEquals(result.reason, StandardResolutionReasons.DISABLED);
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+  }));
 
-Deno.test("flag resolution > resolves multiple flags simultaneously", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
+Deno.test("flag resolution > resolves multiple flags simultaneously", () =>
+  withProvider(async (pool, provider) => {
     await pool.query(`
       INSERT INTO openfeature.feature_flags (flag_key, flag_type)
       VALUES ('flag-a', 'boolean'), ('flag-b', 'string')
@@ -181,37 +165,25 @@ Deno.test("flag resolution > resolves multiple flags simultaneously", async () =
 
     const b = await provider.resolveStringEvaluation("flag-b", "", {}, logger);
     assertStrictEquals(b.value, "world");
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+  }));
 
 // ---------------------------------------------------------------------------
 // Error handling
 // ---------------------------------------------------------------------------
 
-Deno.test("error handling > throws FlagNotFoundError for missing flags", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
+Deno.test("error handling > throws FlagNotFoundError for missing flags", () =>
+  withProvider(async (_pool, provider) => {
     await provider.initialize();
 
     await assertRejects(
       () => provider.resolveBooleanEvaluation("nonexistent", false, {}, logger),
       FlagNotFoundError,
     );
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+  }));
 
 for (const enabled of [true, false]) {
-  Deno.test(`error handling > throws TypeMismatchError for wrong type (enabled=${enabled})`, async () => {
-    const { pglite, pool, provider } = await setup();
-    try {
+  Deno.test(`error handling > throws TypeMismatchError for wrong type (enabled=${enabled})`, () =>
+    withProvider(async (pool, provider) => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled)
         VALUES ('bool-flag', 'boolean', ${enabled})
@@ -227,21 +199,15 @@ for (const enabled of [true, false]) {
         () => provider.resolveStringEvaluation("bool-flag", "", {}, logger),
         TypeMismatchError,
       );
-    } finally {
-      await provider.onClose();
-      await pool.end();
-      await pglite.close();
-    }
-  });
+    }));
 }
 
 // ---------------------------------------------------------------------------
 // Rollouts
 // ---------------------------------------------------------------------------
 
-Deno.test("rollouts > returns SPLIT reason with targeting key", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
+Deno.test("rollouts > returns SPLIT reason with targeting key", () =>
+  withProvider(async (pool, provider) => {
     await pool.query(`
       INSERT INTO openfeature.feature_flags (flag_key, flag_type)
       VALUES ('ab-test', 'string')
@@ -262,16 +228,10 @@ Deno.test("rollouts > returns SPLIT reason with targeting key", async () => {
     );
     assertStrictEquals(result.reason, StandardResolutionReasons.SPLIT);
     assert(["control", "treatment"].includes(result.variant ?? ""));
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+  }));
 
-Deno.test("rollouts > is deterministic for the same targeting key", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
+Deno.test("rollouts > is deterministic for the same targeting key", () =>
+  withProvider(async (pool, provider) => {
     await pool.query(`
       INSERT INTO openfeature.feature_flags (flag_key, flag_type)
       VALUES ('ab-test', 'string')
@@ -295,16 +255,10 @@ Deno.test("rollouts > is deterministic for the same targeting key", async () => 
       results.add(r.variant ?? "");
     }
     assertStrictEquals(results.size, 1, "should be deterministic");
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+  }));
 
-Deno.test("rollouts > falls back to default variant without targeting key", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
+Deno.test("rollouts > falls back to default variant without targeting key", () =>
+  withProvider(async (pool, provider) => {
     await pool.query(`
       INSERT INTO openfeature.feature_flags (flag_key, flag_type)
       VALUES ('ab-test', 'string')
@@ -325,20 +279,14 @@ Deno.test("rollouts > falls back to default variant without targeting key", asyn
     );
     assertStrictEquals(result.variant, "control");
     assertStrictEquals(result.reason, StandardResolutionReasons.STATIC);
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+  }));
 
-Deno.test("rollouts > normalizes percentages > 100 proportionally", async () => {
+Deno.test("rollouts > normalizes percentages > 100 proportionally", () => {
   // 70 + 70 = 140 total. Math.max(140, 100) = 140 as bucket divisor.
   // Buckets 0–69 → 'a' (50%), buckets 70–139 → 'b' (50%).
   // This is the intended behaviour: treat percentages as weights when they
   // overflow, so 70/70 means the same as 50/50.
-  const { pglite, pool, provider } = await setup();
-  try {
+  return withProvider(async (pool, provider) => {
     await pool.query(`
       INSERT INTO openfeature.feature_flags (flag_key, flag_type)
       VALUES ('split-test', 'string')
@@ -373,16 +321,11 @@ Deno.test("rollouts > normalizes percentages > 100 proportionally", async () => 
       counts.b >= 70 && counts.b <= 130,
       `Expected b ≈ 100/200, got ${counts.b}`,
     );
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
+  });
 });
 
-Deno.test("rollouts > 100% rollout never falls through to default", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
+Deno.test("rollouts > 100% rollout never falls through to default", () =>
+  withProvider(async (pool, provider) => {
     await pool.query(`
       INSERT INTO openfeature.feature_flags (flag_key, flag_type)
       VALUES ('full-rollout', 'string')
@@ -405,12 +348,7 @@ Deno.test("rollouts > 100% rollout never falls through to default", async () => 
       );
       assertStrictEquals(result.variant, "treatment");
     }
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+  }));
 
 // ---------------------------------------------------------------------------
 // DB constraint enforcement
@@ -459,18 +397,11 @@ const constraintCases = [
 ];
 
 for (const tc of constraintCases) {
-  Deno.test(`DB constraint enforcement > ${tc.name}`, async () => {
-    const pglite = new PGlite();
-    const pool = createPool(pglite);
-    await pglite.exec(migration);
-    try {
+  Deno.test(`DB constraint enforcement > ${tc.name}`, () =>
+    withDb(async (pool) => {
       for (const sql of tc.setupSql) await pool.query(sql);
       await assertRejects(() => pool.query(tc.badSql), Error);
-    } finally {
-      await pool.end();
-      await pglite.close();
-    }
-  });
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -478,8 +409,11 @@ for (const tc of constraintCases) {
 // ---------------------------------------------------------------------------
 
 Deno.test("initialize > propagates syncCache errors to the caller", async () => {
+  const { PGlite } = await import("@electric-sql/pglite");
+  const { Pool } = await import("@middle-management/pglite-pg-adapter");
   const pglite = new PGlite();
-  const pool = createPool(pglite);
+  // @ts-ignore: PGlite ESM/CTS dual-package type mismatch
+  const pool = new Pool({ pglite }) as unknown as pg.Pool;
   // Do NOT run migration — the query inside syncCache will fail (schema missing)
   const provider = new PostgresProvider({
     pool,
@@ -493,178 +427,151 @@ Deno.test("initialize > propagates syncCache errors to the caller", async () => 
   }
 });
 
-Deno.test("initialize > double-call is a no-op", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
+Deno.test("initialize > double-call is a no-op", () =>
+  withProvider(async (_pool, provider) => {
     await provider.initialize();
     await provider.initialize(); // should not throw or create a second listener
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+  }));
 
-Deno.test("initialize > onClose before initialize is a no-op", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
+Deno.test("initialize > onClose before initialize is a no-op", () =>
+  withProvider(async (_pool, provider) => {
     await provider.onClose(); // should not throw on uninitialized provider
-  } finally {
-    await pool.end();
-    await pglite.close();
-  }
-});
+  }));
 
-Deno.test("initialize > initialize after onClose is a no-op", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
+Deno.test("initialize > initialize after onClose is a no-op", () =>
+  withProvider(async (_pool, provider) => {
     await provider.initialize();
     await provider.onClose();
     await provider.initialize(); // should not re-initialize after dispose
-  } finally {
-    await pool.end();
-    await pglite.close();
-  }
-});
+  }));
 
 // ---------------------------------------------------------------------------
 // Background sync behaviour
 // ---------------------------------------------------------------------------
 
-Deno.test("background sync > reconnects after connection loss", async () => {
-  const pglite = new PGlite();
-  const pool = createPool(pglite);
-  await pglite.exec(migration);
+Deno.test("background sync > reconnects after connection loss", () =>
+  withDb(async (pool) => {
+    await pool.query(`
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('test-flag', 'boolean')
+    `);
+    await pool.query(`
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
+      VALUES ('test-flag', 'on', 'boolean', 'true')
+    `);
 
-  await pool.query(`
-    INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-    VALUES ('test-flag', 'boolean')
-  `);
-  await pool.query(`
-    INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-    VALUES ('test-flag', 'on', 'boolean', 'true')
-  `);
+    const getListenerClient = interceptListenerClient(pool);
 
-  const getListenerClient = interceptListenerClient(pool);
+    const provider = new PostgresProvider({ pool });
+    try {
+      await provider.initialize();
 
-  const provider = new PostgresProvider({ pool });
-  await provider.initialize();
+      const stale = new Promise<void>((resolve) => {
+        provider.events.addHandler(ProviderEvents.Stale, () => resolve());
+      });
 
-  const stale = new Promise<void>((resolve) => {
-    provider.events.addHandler(ProviderEvents.Stale, () => resolve());
-  });
+      // Simulate connection loss
+      getListenerClient().emit("error", new Error("simulated disconnect"));
 
-  // Simulate connection loss
-  getListenerClient().emit("error", new Error("simulated disconnect"));
+      // Should emit Stale
+      await stale;
 
-  // Should emit Stale
-  await stale;
+      // Wait for backoff to reconnect and sync
+      await new Promise((r) => setTimeout(r, 500));
 
-  // Wait for backoff to reconnect and sync
-  await new Promise((r) => setTimeout(r, 500));
+      // Provider should still work after reconnection
+      const result = await provider.resolveBooleanEvaluation(
+        "test-flag",
+        false,
+        {},
+        logger,
+      );
+      assertStrictEquals(result.value, true);
+    } finally {
+      await provider.onClose();
+    }
+  }));
 
-  // Provider should still work after reconnection
-  const result = await provider.resolveBooleanEvaluation(
-    "test-flag",
-    false,
-    {},
-    logger,
-  );
-  assertStrictEquals(result.value, true);
+Deno.test("background sync > dispose during reconnection does not throw", () =>
+  withDb(async (pool) => {
+    const getListenerClient = interceptListenerClient(pool);
 
-  await provider.onClose();
-  await pool.end();
-  await pglite.close();
-});
+    const provider = new PostgresProvider({ pool });
+    await provider.initialize();
 
-Deno.test("background sync > dispose during reconnection does not throw", async () => {
-  const pglite = new PGlite();
-  const pool = createPool(pglite);
-  await pglite.exec(migration);
+    // Simulate connection loss to enter reconnecting state
+    getListenerClient().emit("error", new Error("simulated disconnect"));
 
-  const getListenerClient = interceptListenerClient(pool);
+    // Immediately close while reconnection is in-flight — should not throw,
+    // backoff should stop retrying
+    await provider.onClose();
+  }));
 
-  const provider = new PostgresProvider({ pool });
-  await provider.initialize();
+Deno.test("background sync > emits Stale when a notification-triggered sync fails", () =>
+  withDb(async (pool) => {
+    let failQueries = false;
+    const wrappedPool = {
+      connect: () => pool.connect(),
+      query: (sql: string) => {
+        if (failQueries) return Promise.reject(new Error("DB down"));
+        return pool.query(sql);
+      },
+    } as unknown as typeof pool;
 
-  // Simulate connection loss to enter reconnecting state
-  getListenerClient().emit("error", new Error("simulated disconnect"));
+    const provider = new PostgresProvider({
+      pool: wrappedPool,
+    });
 
-  // Immediately close while reconnection is in-flight
-  await provider.onClose();
+    try {
+      await provider.initialize();
+      failQueries = true;
 
-  // Should not throw, backoff should stop retrying
-  await pool.end();
-  await pglite.close();
-});
+      const stale = new Promise<void>((resolve) => {
+        provider.events.addHandler(ProviderEvents.Stale, () => resolve());
+      });
 
-Deno.test("background sync > emits Stale when a notification-triggered sync fails", async () => {
-  const pglite = new PGlite();
-  const pool = createPool(pglite);
-  await pglite.exec(migration);
+      // Trigger onNotification path via a direct NOTIFY
+      await pool.query("NOTIFY openfeature_flag_change");
+      await stale;
+    } finally {
+      await provider.onClose();
+    }
+  }));
 
-  let failQueries = false;
-  const wrappedPool = {
-    connect: () => pool.connect(),
-    query: (sql: string) => {
-      if (failQueries) return Promise.reject(new Error("DB down"));
-      return pool.query(sql);
-    },
-  } as unknown as typeof pool;
+Deno.test("background sync > does not emit ConfigurationChanged when nothing changed", () =>
+  withDb(async (pool) => {
+    await pool.query(`
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('stable-flag', 'boolean')
+    `);
+    await pool.query(`
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
+      VALUES ('stable-flag', 'on', 'boolean', 'true')
+    `);
 
-  const provider = new PostgresProvider({
-    pool: wrappedPool,
-  });
+    const provider = new PostgresProvider({
+      pool,
+    });
 
-  await provider.initialize();
-  failQueries = true;
+    try {
+      await provider.initialize();
 
-  const stale = new Promise<void>((resolve) => {
-    provider.events.addHandler(ProviderEvents.Stale, () => resolve());
-  });
+      let changeCount = 0;
+      provider.events.addHandler(ProviderEvents.ConfigurationChanged, () => {
+        changeCount++;
+      });
 
-  // Trigger onNotification path via a direct NOTIFY
-  await pool.query("NOTIFY openfeature_flag_change");
-  await stale;
+      // Trigger a sync via NOTIFY without changing any data — cache is identical,
+      // so ConfigurationChanged must not fire.
+      await pool.query("NOTIFY openfeature_flag_change");
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
-  await provider.onClose();
-  await pool.end();
-  await pglite.close();
-});
-
-Deno.test("background sync > does not emit ConfigurationChanged when nothing changed", async () => {
-  const pglite = new PGlite();
-  const pool = createPool(pglite);
-  await pglite.exec(migration);
-
-  await pool.query(`
-    INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-    VALUES ('stable-flag', 'boolean')
-  `);
-  await pool.query(`
-    INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-    VALUES ('stable-flag', 'on', 'boolean', 'true')
-  `);
-
-  const provider = new PostgresProvider({
-    pool,
-  });
-
-  await provider.initialize();
-
-  let changeCount = 0;
-  provider.events.addHandler(ProviderEvents.ConfigurationChanged, () => {
-    changeCount++;
-  });
-
-  // Trigger a sync via NOTIFY without changing any data — cache is identical,
-  // so ConfigurationChanged must not fire.
-  await pool.query("NOTIFY openfeature_flag_change");
-  await new Promise((resolve) => setTimeout(resolve, 200));
-
-  assertStrictEquals(changeCount, 0, "should not fire when cache is unchanged");
-
-  await provider.onClose();
-  await pool.end();
-  await pglite.close();
-});
+      assertStrictEquals(
+        changeCount,
+        0,
+        "should not fire when cache is unchanged",
+      );
+    } finally {
+      await provider.onClose();
+    }
+  }));
