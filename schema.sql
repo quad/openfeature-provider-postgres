@@ -63,23 +63,11 @@ $$
 LANGUAGE plpgsql;
 
 CREATE TRIGGER feature_flags_notify
-    AFTER INSERT OR DELETE ON openfeature.feature_flags
-    FOR EACH ROW
-    EXECUTE FUNCTION openfeature.notify_flag_change ();
-
-CREATE TRIGGER feature_flags_notify_update
-    AFTER UPDATE ON openfeature.feature_flags
-    FOR EACH ROW
-    WHEN (OLD.* IS DISTINCT FROM NEW.*)
+    AFTER INSERT OR UPDATE OR DELETE ON openfeature.feature_flags
+    FOR EACH STATEMENT
     EXECUTE FUNCTION openfeature.notify_flag_change ();
 
 CREATE TRIGGER flag_variants_notify
-    AFTER INSERT OR DELETE ON openfeature.flag_variants
-    FOR EACH ROW
-    EXECUTE FUNCTION openfeature.notify_flag_change ();
-
-CREATE TRIGGER flag_variants_notify_update
-    AFTER UPDATE ON openfeature.flag_variants
-    FOR EACH ROW
-    WHEN (OLD.* IS DISTINCT FROM NEW.*)
+    AFTER INSERT OR UPDATE OR DELETE ON openfeature.flag_variants
+    FOR EACH STATEMENT
     EXECUTE FUNCTION openfeature.notify_flag_change ();
