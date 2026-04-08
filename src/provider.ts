@@ -16,15 +16,31 @@ import {
 } from "@openfeature/server-sdk";
 import pg from "pg";
 import { startNotifyListener } from "./listener.ts";
-import type {
-  FlagData,
-  PostgresProviderOptions,
-} from "./types.ts";
-import {
-  DEFAULT_CHANNEL,
-  DEFAULT_SCHEMA,
-  DEFAULT_SYNC_INTERVAL_MS,
-} from "./types.ts";
+
+interface FlagData {
+  flagKey: string;
+  flagType: "boolean" | "string" | "number" | "object";
+  defaultVariant: string;
+  enabled: boolean;
+  variants: Map<string, unknown>;
+  rollout: RolloutEntry[] | null;
+}
+
+interface RolloutEntry {
+  variant: string;
+  percentage: number;
+}
+
+export interface PostgresProviderOptions {
+  pool: pg.Pool;
+  schema?: string;
+  channelName?: string;
+  syncIntervalMs?: number;
+}
+
+const DEFAULT_SCHEMA = "openfeature";
+const DEFAULT_CHANNEL = "flag_change";
+const DEFAULT_SYNC_INTERVAL_MS = 300_000;
 
 export class PostgresProvider implements Provider {
   readonly metadata = { name: "openfeature-provider-postgres" };
