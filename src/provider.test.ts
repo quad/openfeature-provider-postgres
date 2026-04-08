@@ -647,6 +647,62 @@ Deno.test("rollouts > 100% rollout never falls through to default", async () => 
 // Background sync behaviour
 // ---------------------------------------------------------------------------
 
+Deno.test("background sync > reconnects after connection loss", async () => {
+  const pglite = new PGlite();
+  const pool = createPool(pglite);
+  await pglite.exec(migration);
+
+  await pool.query(`
+    INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+    VALUES ('test-flag', 'boolean')
+  `);
+  await pool.query(`
+    INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
+    VALUES ('test-flag', 'on', 'boolean', 'true')
+  `);
+
+  // Capture the listener's internal client via a pool.connect wrapper
+  let listenerClient:
+    | { emit: (event: string, ...args: unknown[]) => void }
+    | null = null;
+  const origConnect = pool.connect.bind(pool);
+  // deno-lint-ignore no-explicit-any
+  (pool as any).connect = async () => {
+    const c = await origConnect();
+    listenerClient = c;
+    return c;
+  };
+
+  const provider = new PostgresProvider({ pool });
+  await provider.initialize();
+
+  const stale = new Promise<void>((resolve) => {
+    provider.events.addHandler(ProviderEvents.Stale, () => resolve());
+  });
+
+  // Simulate connection loss
+  listenerClient!.emit("error", new Error("simulated disconnect"));
+
+  // Should emit Stale
+  await stale;
+
+  // Wait for backoff to reconnect and sync
+  await new Promise((r) => setTimeout(r, 500));
+
+  // Provider should still work after reconnection
+  const result = await provider.resolveBooleanEvaluation(
+    "test-flag",
+    false,
+    {},
+    logger,
+  );
+  assertStrictEquals(result.value, true);
+
+  await provider.onClose();
+  await pool.end();
+  await pglite.close();
+});
+
 Deno.test("background sync > emits Stale when a notification-triggered sync fails", async () => {
   const pglite = new PGlite();
   const pool = createPool(pglite);
