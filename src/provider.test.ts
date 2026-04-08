@@ -37,122 +37,81 @@ async function setup() {
 // Flag resolution
 // ---------------------------------------------------------------------------
 
-Deno.test("flag resolution > resolves boolean flags", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('bool-flag', 'boolean')
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('bool-flag', 'on', 'boolean', 'true')
-    `);
+const flagResolutionCases = [
+  {
+    name: "boolean",
+    flagKey: "bool-flag",
+    flagType: "boolean",
+    variant: "on",
+    dbValue: "true",
+    defaultValue: false as unknown,
+    expectedValue: true as unknown,
+    resolve: "resolveBooleanEvaluation" as const,
+  },
+  {
+    name: "string",
+    flagKey: "greeting",
+    flagType: "string",
+    variant: "hello",
+    dbValue: '"Hello, world!"',
+    defaultValue: "" as unknown,
+    expectedValue: "Hello, world!" as unknown,
+    resolve: "resolveStringEvaluation" as const,
+  },
+  {
+    name: "number",
+    flagKey: "rate-limit",
+    flagType: "number",
+    variant: "default",
+    dbValue: "100",
+    defaultValue: 0 as unknown,
+    expectedValue: 100 as unknown,
+    resolve: "resolveNumberEvaluation" as const,
+  },
+  {
+    name: "object",
+    flagKey: "config",
+    flagType: "object",
+    variant: "v1",
+    dbValue: '{"theme": "dark", "limit": 10}',
+    defaultValue: {} as unknown,
+    expectedValue: { theme: "dark", limit: 10 } as unknown,
+    resolve: "resolveObjectEvaluation" as const,
+  },
+];
 
-    await provider.initialize();
+for (const tc of flagResolutionCases) {
+  Deno.test(`flag resolution > resolves ${tc.name} flags`, async () => {
+    const { pglite, pool, provider } = await setup();
+    try {
+      await pool.query(`
+        INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+        VALUES ('${tc.flagKey}', '${tc.flagType}')
+      `);
+      await pool.query(`
+        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
+        VALUES ('${tc.flagKey}', '${tc.variant}', '${tc.flagType}', '${tc.dbValue}')
+      `);
 
-    const result = await provider.resolveBooleanEvaluation(
-      "bool-flag",
-      false,
-      {},
-      logger,
-    );
-    assertStrictEquals(result.value, true);
-    assertStrictEquals(result.variant, "on");
-    assertStrictEquals(result.reason, StandardResolutionReasons.STATIC);
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+      await provider.initialize();
 
-Deno.test("flag resolution > resolves string flags", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('greeting', 'string')
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('greeting', 'hello', 'string', '"Hello, world!"')
-    `);
-
-    await provider.initialize();
-
-    const result = await provider.resolveStringEvaluation(
-      "greeting",
-      "",
-      {},
-      logger,
-    );
-    assertStrictEquals(result.value, "Hello, world!");
-    assertStrictEquals(result.variant, "hello");
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
-
-Deno.test("flag resolution > resolves number flags", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('rate-limit', 'number')
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('rate-limit', 'default', 'number', '100')
-    `);
-
-    await provider.initialize();
-
-    const result = await provider.resolveNumberEvaluation(
-      "rate-limit",
-      0,
-      {},
-      logger,
-    );
-    assertStrictEquals(result.value, 100);
-    assertStrictEquals(result.variant, "default");
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
-
-Deno.test("flag resolution > resolves object flags", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('config', 'object')
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('config', 'v1', 'object', '{"theme": "dark", "limit": 10}')
-    `);
-
-    await provider.initialize();
-
-    const result = await provider.resolveObjectEvaluation(
-      "config",
-      {},
-      {},
-      logger,
-    );
-    assertEquals(result.value, { theme: "dark", limit: 10 });
-    assertStrictEquals(result.variant, "v1");
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+      // deno-lint-ignore no-explicit-any
+      const result = await (provider as any)[tc.resolve](
+        tc.flagKey,
+        tc.defaultValue,
+        {},
+        logger,
+      );
+      assertEquals(result.value, tc.expectedValue);
+      assertStrictEquals(result.variant, tc.variant);
+      assertStrictEquals(result.reason, StandardResolutionReasons.STATIC);
+    } finally {
+      await provider.onClose();
+      await pool.end();
+      await pglite.close();
+    }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Error handling
