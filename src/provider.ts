@@ -93,40 +93,44 @@ export class PostgresProvider implements Provider {
     this.debouncedSync.clear();
   }
 
+  // deno-lint-ignore require-await -- Provider interface requires Promise return
   async resolveBooleanEvaluation(
     flagKey: string,
     defaultValue: boolean,
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<boolean>> {
-    return await this.resolve(flagKey, defaultValue, "boolean", context);
+    return this.resolve(flagKey, defaultValue, "boolean", context);
   }
 
+  // deno-lint-ignore require-await -- Provider interface requires Promise return
   async resolveStringEvaluation(
     flagKey: string,
     defaultValue: string,
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<string>> {
-    return await this.resolve(flagKey, defaultValue, "string", context);
+    return this.resolve(flagKey, defaultValue, "string", context);
   }
 
+  // deno-lint-ignore require-await -- Provider interface requires Promise return
   async resolveNumberEvaluation(
     flagKey: string,
     defaultValue: number,
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<number>> {
-    return await this.resolve(flagKey, defaultValue, "number", context);
+    return this.resolve(flagKey, defaultValue, "number", context);
   }
 
+  // deno-lint-ignore require-await -- Provider interface requires Promise return
   async resolveObjectEvaluation<T extends JsonValue>(
     flagKey: string,
     defaultValue: T,
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<T>> {
-    return await this.resolve(flagKey, defaultValue, "object", context);
+    return this.resolve(flagKey, defaultValue, "object", context);
   }
 
   private resolve<T>(
