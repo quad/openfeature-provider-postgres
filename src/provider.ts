@@ -46,7 +46,7 @@ export class PostgresProvider implements Provider {
   private lastResultJson = "";
   private readonly pool: pg.Pool;
   private readonly schema: string;
-  private stopListener: () => void = () => {};
+  private stopListener = () => {};
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
 
