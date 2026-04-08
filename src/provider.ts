@@ -136,17 +136,17 @@ export class PostgresProvider implements Provider {
     const flag = this.cache.get(flagKey);
     if (!flag) throw new FlagNotFoundError(`Flag "${flagKey}" not found`);
 
+    if (flag.flagType !== expectedType) {
+      throw new TypeMismatchError(
+        `Flag "${flagKey}" is type "${flag.flagType}", requested "${expectedType}"`,
+      );
+    }
+
     if (!flag.enabled) {
       return {
         value: defaultValue,
         reason: StandardResolutionReasons.DISABLED,
       };
-    }
-
-    if (flag.flagType !== expectedType) {
-      throw new TypeMismatchError(
-        `Flag "${flagKey}" is type "${flag.flagType}", requested "${expectedType}"`,
-      );
     }
 
     let chosenVariant: string;
