@@ -6,7 +6,8 @@ CREATE TABLE openfeature.feature_flags (
     enabled         BOOLEAN NOT NULL DEFAULT true,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    -- Supports the compound FK from flag_variants, ensuring type consistency.
+    -- flag_type is functionally dependent on flag_key, but needs to be part of
+    -- a unique constraint so flag_variants can enforce type consistency via FK.
     UNIQUE (flag_key, flag_type)
 );
 
@@ -15,20 +16,22 @@ CREATE TABLE openfeature.flag_variants (
     variant    TEXT NOT NULL,
     flag_type  TEXT NOT NULL,
     value      JSONB NOT NULL,
-    -- NULL = default/fallback variant, 0-100 = rollout participant.
+    -- NULL means this is the default (fallback) variant; an integer means it
+    -- participates in percentage-based rollout. A single column encodes the
+    -- variant's role so that invalid combinations are unrepresentable.
     percentage INTEGER CHECK (percentage IS NULL OR percentage BETWEEN 0 AND 100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    -- Ensures variant values match the flag's declared type.
     CHECK (jsonb_typeof(value) = flag_type),
     PRIMARY KEY (flag_key, variant),
     FOREIGN KEY (flag_key, flag_type) REFERENCES openfeature.feature_flags(flag_key, flag_type)
 );
 
--- Each flag may have at most one default variant (percentage IS NULL).
 CREATE UNIQUE INDEX one_default_per_flag
     ON openfeature.flag_variants (flag_key)
     WHERE percentage IS NULL;
+
+-- Functions
 
 CREATE FUNCTION openfeature.set_updated_at() RETURNS TRIGGER AS $$
 BEGIN
@@ -37,6 +40,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Channel is namespaced to avoid collisions in shared databases.
+CREATE FUNCTION openfeature.notify_flag_change() RETURNS TRIGGER AS $$
+BEGIN
+    NOTIFY openfeature_flag_change;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Triggers
+
 CREATE TRIGGER feature_flags_set_updated_at
     BEFORE UPDATE ON openfeature.feature_flags
     FOR EACH ROW EXECUTE FUNCTION openfeature.set_updated_at();
@@ -44,15 +57,6 @@ CREATE TRIGGER feature_flags_set_updated_at
 CREATE TRIGGER flag_variants_set_updated_at
     BEFORE UPDATE ON openfeature.flag_variants
     FOR EACH ROW EXECUTE FUNCTION openfeature.set_updated_at();
-
--- Emit NOTIFY on any flag data change so the provider can refresh its cache.
--- Channel is namespaced to the schema to avoid collisions in shared databases.
-CREATE FUNCTION openfeature.notify_flag_change() RETURNS TRIGGER AS $$
-BEGIN
-    NOTIFY openfeature_flag_change;
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
 
 CREATE TRIGGER feature_flags_notify
     AFTER INSERT OR DELETE ON openfeature.feature_flags
