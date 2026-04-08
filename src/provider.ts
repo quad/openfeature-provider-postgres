@@ -18,17 +18,11 @@ import pg from "pg";
 import { startNotifyListener } from "./listener.ts";
 
 interface FlagData {
-  flagKey: string;
   flagType: "boolean" | "string" | "number" | "object";
   defaultVariant: string;
   enabled: boolean;
   variants: Map<string, unknown>;
-  rollout: RolloutEntry[] | null;
-}
-
-interface RolloutEntry {
-  variant: string;
-  percentage: number;
+  rollout: { variant: string; percentage: number }[] | null;
 }
 
 export interface PostgresProviderOptions {
@@ -158,7 +152,7 @@ export class PostgresProvider implements Provider {
     let reason: string;
 
     if (flag.rollout && context.targetingKey) {
-      chosenVariant = await this.pickRolloutVariant(flag, context.targetingKey);
+      chosenVariant = await this.pickRolloutVariant(flagKey, flag, context.targetingKey);
       reason = StandardResolutionReasons.SPLIT;
     } else {
       chosenVariant = flag.defaultVariant;
@@ -176,10 +170,11 @@ export class PostgresProvider implements Provider {
   }
 
   private async pickRolloutVariant(
+    flagKey: string,
     flag: FlagData,
     targetingKey: string,
   ): Promise<string> {
-    const data = new TextEncoder().encode(targetingKey + "\0" + flag.flagKey);
+    const data = new TextEncoder().encode(targetingKey + "\0" + flagKey);
     const buf = await crypto.subtle.digest("SHA-256", data);
 
     // Bucket divisor: Math.max(total, 100)
@@ -239,7 +234,6 @@ export class PostgresProvider implements Provider {
 
     for (const row of result.rows) {
       const flag = getOrInsertComputed(grouped, row.flag_key, () => ({
-        flagKey: row.flag_key,
         flagType: row.flag_type,
         defaultVariant: "",
         enabled: row.enabled,
