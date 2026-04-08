@@ -183,7 +183,7 @@ export class PostgresProvider implements Provider {
     flag: FlagData,
     targetingKey: string,
   ): Promise<string> {
-    const data = new TextEncoder().encode(targetingKey + "\0" + flagKey);
+    const data = new TextEncoder().encode(`${targetingKey}\0${flagKey}`);
     const buf = await crypto.subtle.digest("SHA-256", data);
 
     // Bucket divisor: Math.max(total, 100)
