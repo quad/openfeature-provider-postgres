@@ -29,17 +29,13 @@ export async function insertFlag(
   await pool.query(
     `INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled) VALUES ('${key}', '${type}', ${enabled})`,
   );
-  const rows = variants
-    .map(
-      (v) =>
-        `('${key}', '${v.name}', '${type}', '${v.value}', ${
-          v.percentage ?? "NULL"
-        })`,
-    )
-    .join(", ");
-  await pool.query(
-    `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage) VALUES ${rows}`,
-  );
+  for (const v of variants) {
+    await pool.query(
+      `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage) VALUES ('${key}', '${v.name}', '${type}', '${v.value}', ${
+        v.percentage ?? "NULL"
+      })`,
+    );
+  }
 }
 
 export async function withDb(
