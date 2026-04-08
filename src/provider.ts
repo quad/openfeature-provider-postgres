@@ -32,7 +32,7 @@ export interface PostgresProviderOptions {
 }
 
 const DEFAULT_SCHEMA = "openfeature";
-const CHANNEL_SUFFIX = "_flag_change";
+const CHANNEL = "openfeature_flag_change";
 const SYNC_INTERVAL_MS = 300_000;
 const DEBOUNCE_MS = 100;
 const RECONNECT_MAX_DELAY_MS = 30_000;
@@ -46,7 +46,7 @@ export class PostgresProvider implements Provider {
   private lastResultJson = "";
   private readonly pool: PostgresProviderOptions["pool"];
   private readonly schema: string;
-  private listener: Disposable | null = null;
+  private stopListener: (() => void) | null = null;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
 
@@ -68,9 +68,9 @@ export class PostgresProvider implements Provider {
 
     await this.syncCache();
 
-    this.listener = await startNotifyListener(
+    this.stopListener = await startNotifyListener(
       this.pool,
-      this.schema + CHANNEL_SUFFIX,
+      CHANNEL,
       this.debouncedSync,
       this.debouncedSync,
       () => this.events.emit(ProviderEvents.Stale),
@@ -86,7 +86,7 @@ export class PostgresProvider implements Provider {
 
     this.debouncedSync.clear();
     if (this.syncInterval) clearInterval(this.syncInterval);
-    this.listener?.[Symbol.dispose]();
+    this.stopListener?.();
   }
 
   async resolveBooleanEvaluation(
@@ -268,7 +268,7 @@ async function startNotifyListener(
   onNotification: () => void,
   onReconnect: () => void,
   onConnectionLost: () => void,
-): Promise<Disposable> {
+): Promise<() => void> {
   let state: "listening" | "reconnecting" | "stopped" = "stopped";
 
   async function connect(): Promise<pg.PoolClient> {
@@ -300,12 +300,10 @@ async function startNotifyListener(
 
   let client = await connect();
 
-  return {
-    [Symbol.dispose]() {
-      const shouldRelease = state === "listening";
-      state = "stopped";
-      if (shouldRelease) client.release(true);
-    },
+  return () => {
+    const shouldRelease = state === "listening";
+    state = "stopped";
+    if (shouldRelease) client.release(true);
   };
 }
 
