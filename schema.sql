@@ -31,7 +31,7 @@ CREATE UNIQUE INDEX one_default_per_flag
     ON openfeature.flag_variants (flag_key)
     WHERE percentage IS NULL;
 
--- Functions
+-- Automatic updated_at
 
 CREATE FUNCTION openfeature.set_updated_at() RETURNS TRIGGER AS $$
 BEGIN
@@ -40,16 +40,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Channel is namespaced to avoid collisions in shared databases.
-CREATE FUNCTION openfeature.notify_flag_change() RETURNS TRIGGER AS $$
-BEGIN
-    NOTIFY openfeature_flag_change;
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
--- Triggers
-
 CREATE TRIGGER feature_flags_set_updated_at
     BEFORE UPDATE ON openfeature.feature_flags
     FOR EACH ROW EXECUTE FUNCTION openfeature.set_updated_at();
@@ -57,6 +47,17 @@ CREATE TRIGGER feature_flags_set_updated_at
 CREATE TRIGGER flag_variants_set_updated_at
     BEFORE UPDATE ON openfeature.flag_variants
     FOR EACH ROW EXECUTE FUNCTION openfeature.set_updated_at();
+
+-- Change notifications (provider listens to refresh its cache)
+
+-- Channel is namespaced to avoid collisions in shared databases.
+
+CREATE FUNCTION openfeature.notify_flag_change() RETURNS TRIGGER AS $$
+BEGIN
+    NOTIFY openfeature_flag_change;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
 
 CREATE TRIGGER feature_flags_notify
     AFTER INSERT OR DELETE ON openfeature.feature_flags
