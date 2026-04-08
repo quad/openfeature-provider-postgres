@@ -477,6 +477,46 @@ Deno.test("DB constraint enforcement > rejects a second default variant for the 
   }
 });
 
+Deno.test("DB constraint enforcement > rejects empty flag_key", async () => {
+  const { pglite, pool, provider } = await setup();
+  try {
+    await assertRejects(
+      () =>
+        pool.query(`
+        INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+        VALUES ('', 'boolean')
+      `),
+      Error,
+    );
+  } finally {
+    await provider.onClose();
+    await pool.end();
+    await pglite.close();
+  }
+});
+
+Deno.test("DB constraint enforcement > rejects empty variant", async () => {
+  const { pglite, pool, provider } = await setup();
+  try {
+    await pool.query(`
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('my-flag', 'boolean')
+    `);
+    await assertRejects(
+      () =>
+        pool.query(`
+        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
+        VALUES ('my-flag', '', 'boolean', 'true')
+      `),
+      Error,
+    );
+  } finally {
+    await provider.onClose();
+    await pool.end();
+    await pglite.close();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // initialize() behaviour
 // ---------------------------------------------------------------------------

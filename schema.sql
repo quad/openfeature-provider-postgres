@@ -1,7 +1,7 @@
 CREATE SCHEMA openfeature;
 
 CREATE TABLE openfeature.feature_flags (
-    flag_key text PRIMARY KEY,
+    flag_key varchar(255) PRIMARY KEY CHECK (flag_key <> ''),
     flag_type text NOT NULL CHECK (flag_type IN ('boolean', 'string', 'number', 'object')),
     enabled boolean NOT NULL DEFAULT TRUE,
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -11,8 +11,8 @@ CREATE TABLE openfeature.feature_flags (
 );
 
 CREATE TABLE openfeature.flag_variants (
-    flag_key text NOT NULL,
-    variant text NOT NULL,
+    flag_key varchar(255) NOT NULL CHECK (flag_key <> ''),
+    variant varchar(255) NOT NULL CHECK (variant <> ''),
     flag_type text NOT NULL,
     value jsonb NOT NULL,
     percentage integer CHECK (percentage IS NULL OR percentage BETWEEN 0 AND 100),

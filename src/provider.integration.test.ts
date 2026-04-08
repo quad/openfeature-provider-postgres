@@ -40,10 +40,13 @@ Deno.test("Integration: initialize → insert → ConfigurationChanged → evalu
   });
 
   // Swap the default to 'off' — triggers NOTIFY via UPDATE trigger
+  // Two statements: remove old default first, then set new one.
+  // A single CASE UPDATE violates the partial unique index mid-statement in PGlite.
   await pool.query(`
-    UPDATE openfeature.flag_variants
-    SET percentage = CASE WHEN variant = 'off' THEN NULL ELSE 100 END
-    WHERE flag_key = 'my-flag'
+    UPDATE openfeature.flag_variants SET percentage = 50 WHERE flag_key = 'my-flag' AND variant = 'on'
+  `);
+  await pool.query(`
+    UPDATE openfeature.flag_variants SET percentage = NULL WHERE flag_key = 'my-flag' AND variant = 'off'
   `);
 
   // Wait for the ConfigurationChanged event
