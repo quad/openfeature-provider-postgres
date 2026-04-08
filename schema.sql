@@ -6,8 +6,7 @@ CREATE TABLE openfeature.feature_flags (
     enabled         BOOLEAN NOT NULL DEFAULT true,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    -- flag_type is functionally dependent on flag_key, but needs to be part of
-    -- a unique constraint so flag_variants can enforce type consistency via FK.
+    -- Required by the compound FK from flag_variants.
     UNIQUE (flag_key, flag_type)
 );
 
@@ -16,9 +15,7 @@ CREATE TABLE openfeature.flag_variants (
     variant    TEXT NOT NULL,
     flag_type  TEXT NOT NULL,
     value      JSONB NOT NULL,
-    -- NULL means this is the default (fallback) variant; an integer means it
-    -- participates in percentage-based rollout. A single column encodes the
-    -- variant's role so that invalid combinations are unrepresentable.
+    -- NULL = default/fallback variant, 0-100 = rollout participant.
     percentage INTEGER CHECK (percentage IS NULL OR percentage BETWEEN 0 AND 100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -48,9 +45,7 @@ CREATE TRIGGER flag_variants_set_updated_at
     BEFORE UPDATE ON openfeature.flag_variants
     FOR EACH ROW EXECUTE FUNCTION openfeature.set_updated_at();
 
--- Change notifications (provider listens to refresh its cache)
-
--- Channel is namespaced to avoid collisions in shared databases.
+-- Change notifications
 
 CREATE FUNCTION openfeature.notify_flag_change() RETURNS TRIGGER AS $$
 BEGIN
