@@ -1,23 +1,26 @@
 /**
  * PGlite test helpers.
  *
- * The PGlite adapter (`@middle-management/pglite-pg-adapter`) exposes a Pool
- * class that is structurally compatible with `pg` but is a distinct TypeScript
- * type. This module does the cast once so individual test files stay clean.
+ * A template PGlite instance with the schema applied is created once at module
+ * load. Each test clones it (~100ms vs ~400ms for re-applying the DDL),
+ * giving full isolation without the startup cost.
  */
 
 import { PGlite } from "@electric-sql/pglite";
 import { Pool } from "@middle-management/pglite-pg-adapter";
 import type pg from "pg";
 
-const schema = Deno.readTextFileSync(
+const ddl = Deno.readTextFileSync(
   new URL("../schema.sql", import.meta.url),
 );
 
-export function createPool(pglite: PGlite): pg.Pool {
+function createPool(pglite: PGlite): pg.Pool {
   // @ts-expect-error: PGlite ESM/CTS dual-package type mismatch
   return new Pool({ pglite }) as unknown as pg.Pool;
 }
+
+const template = new PGlite();
+await template.exec(ddl);
 
 export async function insertFlag(
   pool: pg.Pool,
@@ -44,8 +47,10 @@ export async function withDb(
   { applySchema = true } = {},
 ): Promise<void> {
   await using stack = new AsyncDisposableStack();
-  const pglite = stack.adopt(new PGlite(), (p) => p.close());
+  const pglite = stack.adopt(
+    applySchema ? (await template.clone()) as PGlite : new PGlite(),
+    (p) => p.close(),
+  );
   const pool = stack.adopt(createPool(pglite), (p) => p.end());
-  if (applySchema) await pglite.exec(schema);
   await fn(pool);
 }
