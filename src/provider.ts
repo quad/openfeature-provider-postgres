@@ -1,4 +1,5 @@
 import { clearInterval, setInterval } from "node:timers";
+import { debounce } from "@std/async/debounce";
 import type {
   EvaluationContext,
   JsonValue,
@@ -49,6 +50,7 @@ export class PostgresProvider implements Provider {
   private readonly syncIntervalMs: number;
   private listener: Disposable | null = null;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
+  private debouncedSync: ReturnType<typeof debounce> | null = null;
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
 
   constructor(options: PostgresProviderOptions) {
@@ -63,15 +65,23 @@ export class PostgresProvider implements Provider {
 
     await this.syncCache();
 
+    const sync = this.debouncedSync = debounce(() => {
+      this.syncCache().then((changed) => {
+        if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
+      }).catch(() => {
+        this.events.emit(ProviderEvents.Stale);
+      });
+    }, 100);
+
     this.listener = await startNotifyListener(
       this.pool,
       this.channelName,
-      () => this.syncAndEmit(),
-      () => this.syncAndEmit(),
+      sync,
+      sync,
       () => this.events.emit(ProviderEvents.Stale),
     );
 
-    this.syncInterval = setInterval(() => this.syncAndEmit(), this.syncIntervalMs).unref();
+    this.syncInterval = setInterval(sync, this.syncIntervalMs).unref();
     this.state = "ready";
   }
 
@@ -79,6 +89,7 @@ export class PostgresProvider implements Provider {
     if (this.state !== "ready") return;
     this.state = "disposed";
 
+    this.debouncedSync?.clear();
     if (this.syncInterval) clearInterval(this.syncInterval);
     this.listener?.[Symbol.dispose]();
   }
@@ -197,14 +208,6 @@ export class PostgresProvider implements Provider {
     }
 
     return flag.defaultVariant;
-  }
-
-  private syncAndEmit(): void {
-    this.syncCache().then((changed) => {
-      if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
-    }).catch(() => {
-      this.events.emit(ProviderEvents.Stale);
-    });
   }
 
   private async syncCache(): Promise<boolean> {

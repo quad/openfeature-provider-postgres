@@ -2,6 +2,7 @@
   "version": "5",
   "specifiers": {
     "jsr:@std/assert@1": "1.0.19",
+    "jsr:@std/async@1": "1.2.0",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "npm:@electric-sql/pglite@0.3": "0.3.16",
     "npm:@middle-management/pglite-pg-adapter@^0.0.4": "0.0.4_@electric-sql+pglite@0.3.16",
@@ -16,6 +17,9 @@
       "dependencies": [
         "jsr:@std/internal"
       ]
+    },
+    "@std/async@1.2.0": {
+      "integrity": "c059c6f6d95ca7cc012ae8e8d7164d1697113d54b0b679e4372b354b11c2dee5"
     },
     "@std/internal@1.0.12": {
       "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
@@ -123,6 +127,7 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@std/async@1",
       "npm:@openfeature/server-sdk@^1.13.0",
       "npm:exponential-backoff@^3.1.2",
       "npm:pg@^8.13.0"
