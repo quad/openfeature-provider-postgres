@@ -22,13 +22,9 @@ export function createPool(pglite: PGlite): pg.Pool {
 export async function withDb(
   fn: (pool: pg.Pool) => Promise<void>,
 ): Promise<void> {
-  const pglite = new PGlite();
-  const pool = createPool(pglite);
+  await using stack = new AsyncDisposableStack();
+  const pglite = stack.adopt(new PGlite(), (p) => p.close());
+  const pool = stack.adopt(createPool(pglite), (p) => p.end());
   await pglite.exec(schema);
-  try {
-    await fn(pool);
-  } finally {
-    await pool.end();
-    await pglite.close();
-  }
+  await fn(pool);
 }

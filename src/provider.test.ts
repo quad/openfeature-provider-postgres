@@ -11,6 +11,7 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
+import { PGlite } from "@electric-sql/pglite";
 import type pg from "pg";
 import { createPool, withDb } from "./pglite-helper.test.ts";
 import { PostgresProvider } from "./provider.ts";
@@ -21,12 +22,12 @@ async function withProvider(
   fn: (pool: pg.Pool, provider: PostgresProvider) => Promise<void>,
 ) {
   await withDb(async (pool) => {
-    const provider = new PostgresProvider({ pool });
-    try {
-      await fn(pool, provider);
-    } finally {
-      await provider.onClose();
-    }
+    await using stack = new AsyncDisposableStack();
+    const provider = stack.adopt(
+      new PostgresProvider({ pool }),
+      (p) => p.onClose(),
+    );
+    await fn(pool, provider);
   });
 }
 
@@ -410,17 +411,14 @@ for (const tc of constraintCases) {
 
 Deno.test("initialize > propagates syncCache errors to the caller", async () => {
   // Deliberately skip schema creation — syncCache will fail (schema missing)
-  const { PGlite } = await import("@electric-sql/pglite");
-  const pglite = new PGlite();
-  const pool = createPool(pglite);
-  const provider = new PostgresProvider({ pool });
-  try {
-    await assertRejects(() => provider.initialize(), Error);
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
+  await using stack = new AsyncDisposableStack();
+  const pglite = stack.adopt(new PGlite(), (p) => p.close());
+  const pool = stack.adopt(createPool(pglite), (p) => p.end());
+  const provider = stack.adopt(
+    new PostgresProvider({ pool }),
+    (p) => p.onClose(),
+  );
+  await assertRejects(() => provider.initialize(), Error);
 });
 
 Deno.test("initialize > double-call is a no-op", () =>
