@@ -17,6 +17,7 @@ import {
 } from "@openfeature/server-sdk";
 import { backOff } from "exponential-backoff";
 import pg from "pg";
+import { xxh32 } from "xxh32";
 
 interface FlagData {
   flagType: "boolean" | "string" | "number" | "object";
@@ -127,12 +128,12 @@ export class PostgresProvider implements Provider {
     return await this.resolve(flagKey, defaultValue, "object", context);
   }
 
-  private async resolve<T>(
+  private resolve<T>(
     flagKey: string,
     defaultValue: T,
     expectedType: FlagData["flagType"],
     context: EvaluationContext,
-  ): Promise<ResolutionDetails<T>> {
+  ): ResolutionDetails<T> {
     const flag = this.cache.get(flagKey);
     if (!flag) throw new FlagNotFoundError(`Flag "${flagKey}" not found`);
 
@@ -153,7 +154,7 @@ export class PostgresProvider implements Provider {
     let reason: string;
 
     if (flag.rollout && context.targetingKey) {
-      chosenVariant = await this.pickRolloutVariant(
+      chosenVariant = this.pickRolloutVariant(
         flagKey,
         flag,
         context.targetingKey,
@@ -174,26 +175,19 @@ export class PostgresProvider implements Provider {
     return { value: value as T, variant: chosenVariant, reason };
   }
 
-  private async pickRolloutVariant(
+  private pickRolloutVariant(
     flagKey: string,
     flag: FlagData,
     targetingKey: string,
-  ): Promise<string> {
-    const data = new TextEncoder().encode(`${targetingKey}\0${flagKey}`);
-    const buf = await crypto.subtle.digest("SHA-256", data);
+  ): string {
+    const hash = xxh32(`${targetingKey}\0${flagKey}`);
 
-    // Bucket divisor: Math.max(total, 100)
-    //
-    // When percentages sum to ≤ 100: divisor is 100. Unallocated traffic
-    // (100 − total) falls through the loop and returns the default variant.
-    //
-    // When percentages sum to > 100 (misconfiguration): divisor is the actual
-    // total, giving proportional normalization — e.g. 70/70 produces a 50/50
-    // split rather than silently skewing the distribution toward earlier entries.
+    // When percentages sum to ≤ 100, unallocated traffic falls through to the
+    // default variant. When > 100 (misconfiguration), the actual total is used
+    // as divisor, giving proportional normalization — e.g. 70/70 → 50/50.
     const rollout = flag.rollout ?? [];
     const total = rollout.reduce((sum, r) => sum + r.percentage, 0);
-    // Big-endian read for consistent bucketing across architectures
-    const bucket = new DataView(buf).getUint32(0) % Math.max(total, 100);
+    const bucket = hash % Math.max(total, 100);
 
     let cumulative = 0;
     for (const entry of rollout) {

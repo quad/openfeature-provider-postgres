@@ -9,7 +9,10 @@
     "npm:@openfeature/server-sdk@^1.13.0": "1.20.2_@openfeature+core@1.9.2",
     "npm:@types/node@*": "22.15.15",
     "npm:exponential-backoff@^3.1.2": "3.1.3",
-    "npm:pg@^8.13.0": "8.20.0"
+    "npm:murmurhash3js@*": "3.0.1",
+    "npm:pg@^8.13.0": "8.20.0",
+    "npm:xxh32@*": "2.0.5",
+    "npm:xxh32@^2.0.5": "2.0.5"
   },
   "jsr": {
     "@std/assert@1.0.19": {
@@ -52,6 +55,9 @@
     },
     "exponential-backoff@3.1.3": {
       "integrity": "sha512-ZgEeZXj30q+I0EN+CbSSpIyPaJ5HVQD18Z1m+u1FXbAeT94mr1zw50q4q6jiiC447Nl/YTcIYSAftiGqetwXCA=="
+    },
+    "murmurhash3js@3.0.1": {
+      "integrity": "sha512-KL8QYUaxq7kUbcl0Yto51rMcYt7E/4N4BG3/c96Iqw1PQrTRspu8Cpx4TZ4Nunib1d4bEkIH3gjCYlP2RLBdow=="
     },
     "pg-cloudflare@1.3.0": {
       "integrity": "sha512-6lswVVSztmHiRtD6I8hw4qP/nDm1EJbKMRhf3HCYaqud7frGysPv7FYJ5noZQdhQtN2xJnimfMtvQq21pdbzyQ=="
@@ -123,6 +129,9 @@
     },
     "xtend@4.0.2": {
       "integrity": "sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ=="
+    },
+    "xxh32@2.0.5": {
+      "integrity": "sha512-glQIaPvLHV4xG2Sn0E4mZWY25JT34+XcG4e2c8OMIH2SXxVrm6MmJ8miCsqGBLtf+rn2YcaeS11vq/66vkXGUQ=="
     }
   },
   "workspace": {
@@ -130,7 +139,8 @@
       "jsr:@std/async@1",
       "npm:@openfeature/server-sdk@^1.13.0",
       "npm:exponential-backoff@^3.1.2",
-      "npm:pg@^8.13.0"
+      "npm:pg@^8.13.0",
+      "npm:xxh32@^2.0.5"
     ]
   }
 }
