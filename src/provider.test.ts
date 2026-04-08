@@ -553,6 +553,96 @@ Deno.test("initialize > double-call is a no-op", async () => {
   }
 });
 
+Deno.test("initialize > onClose before initialize is a no-op", async () => {
+  const { pglite, pool, provider } = await setup();
+  try {
+    await provider.onClose(); // should not throw on uninitialized provider
+  } finally {
+    await pool.end();
+    await pglite.close();
+  }
+});
+
+Deno.test("initialize > initialize after onClose is a no-op", async () => {
+  const { pglite, pool, provider } = await setup();
+  try {
+    await provider.initialize();
+    await provider.onClose();
+    await provider.initialize(); // should not re-initialize after dispose
+  } finally {
+    await pool.end();
+    await pglite.close();
+  }
+});
+
+Deno.test("initialize > resolves multiple flags simultaneously", async () => {
+  const { pglite, pool, provider } = await setup();
+  try {
+    await pool.query(`
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('flag-a', 'boolean'), ('flag-b', 'string')
+    `);
+    await pool.query(`
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
+      VALUES ('flag-a', 'on', 'boolean', 'true'),
+             ('flag-b', 'hello', 'string', '"world"')
+    `);
+
+    await provider.initialize();
+
+    const a = await provider.resolveBooleanEvaluation(
+      "flag-a",
+      false,
+      {},
+      logger,
+    );
+    assertStrictEquals(a.value, true);
+
+    const b = await provider.resolveStringEvaluation("flag-b", "", {}, logger);
+    assertStrictEquals(b.value, "world");
+  } finally {
+    await provider.onClose();
+    await pool.end();
+    await pglite.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Rollout edge cases
+// ---------------------------------------------------------------------------
+
+Deno.test("rollouts > 100% rollout never falls through to default", async () => {
+  const { pglite, pool, provider } = await setup();
+  try {
+    await pool.query(`
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('full-rollout', 'string')
+    `);
+    await pool.query(`
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage)
+      VALUES ('full-rollout', 'default', 'string', '"Default"', NULL),
+             ('full-rollout', 'treatment', 'string', '"Treatment"', 100)
+    `);
+
+    await provider.initialize();
+
+    // With 100% rollout, every targeting key should get 'treatment'
+    for (let i = 0; i < 50; i++) {
+      const result = await provider.resolveStringEvaluation(
+        "full-rollout",
+        "",
+        { targetingKey: `user-${i}` },
+        logger,
+      );
+      assertStrictEquals(result.variant, "treatment");
+    }
+  } finally {
+    await provider.onClose();
+    await pool.end();
+    await pglite.close();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Background sync behaviour
 // ---------------------------------------------------------------------------
