@@ -20,6 +20,7 @@ import pg from "pg";
 import { xxh32 } from "xxh32";
 
 interface FlagData {
+  // Must match openfeature.flag_type enum in schema.sql.
   flagType: "boolean" | "string" | "number" | "object";
   defaultVariant: string;
   enabled: boolean;

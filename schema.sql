@@ -1,8 +1,11 @@
 CREATE SCHEMA openfeature;
 
+-- Must match FlagData.flagType in provider.ts.
+CREATE TYPE openfeature.flag_type AS ENUM ('boolean', 'string', 'number', 'object');
+
 CREATE TABLE openfeature.feature_flags (
     flag_key varchar(255) PRIMARY KEY CHECK (flag_key <> ''),
-    flag_type text NOT NULL CHECK (flag_type IN ('boolean', 'string', 'number', 'object')),
+    flag_type openfeature.flag_type NOT NULL,
     enabled boolean NOT NULL DEFAULT TRUE,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
@@ -13,12 +16,12 @@ CREATE TABLE openfeature.feature_flags (
 CREATE TABLE openfeature.flag_variants (
     flag_key varchar(255) NOT NULL CHECK (flag_key <> ''),
     variant varchar(255) NOT NULL CHECK (variant <> ''),
-    flag_type text NOT NULL,
+    flag_type openfeature.flag_type NOT NULL,
     value jsonb NOT NULL,
     percentage integer CHECK (percentage IS NULL OR percentage BETWEEN 0 AND 100),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CHECK (jsonb_typeof(value) = flag_type),
+    CHECK (jsonb_typeof(value) = flag_type::text),
     PRIMARY KEY (flag_key, variant),
     FOREIGN KEY (flag_key, flag_type) REFERENCES openfeature.feature_flags (flag_key, flag_type)
 );
