@@ -174,8 +174,8 @@ Deno.test("error handling > throws TypeMismatchError for wrong type", async () =
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('bool-flag', 'boolean')
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled)
+      VALUES ('bool-flag', 'boolean', false)
     `);
     await pool.query(`
       INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
@@ -184,6 +184,7 @@ Deno.test("error handling > throws TypeMismatchError for wrong type", async () =
 
     await provider.initialize();
 
+    // Type mismatch should throw even when the flag is disabled.
     await assertRejects(
       () => provider.resolveStringEvaluation("bool-flag", "", {}, logger),
       TypeMismatchError,
