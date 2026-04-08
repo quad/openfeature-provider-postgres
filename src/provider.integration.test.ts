@@ -1,19 +1,14 @@
 import { assertStrictEquals } from "jsr:@std/assert@1";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
 import { PostgresProvider } from "./provider.ts";
-import { withDb } from "./pglite-helper.test.ts";
+import { insertFlag, withDb } from "./pglite-helper.test.ts";
 
 Deno.test("end-to-end flag change via NOTIFY", () =>
   withDb(async (pool) => {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('my-flag', 'boolean')
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage)
-      VALUES ('my-flag', 'on',  'boolean', 'true',  NULL),
-             ('my-flag', 'off', 'boolean', 'false', 100)
-    `);
+    await insertFlag(pool, "my-flag", "boolean", [
+      { name: "on", value: "true" },
+      { name: "off", value: "false", percentage: 100 },
+    ]);
 
     const provider = new PostgresProvider({ pool });
     await OpenFeature.setProviderAndWait("test", provider);

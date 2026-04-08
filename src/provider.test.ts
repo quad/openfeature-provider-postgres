@@ -13,7 +13,7 @@ import {
   TypeMismatchError,
 } from "@openfeature/server-sdk";
 import type pg from "pg";
-import { withDb } from "./pglite-helper.test.ts";
+import { insertFlag, withDb } from "./pglite-helper.test.ts";
 import { PostgresProvider } from "./provider.ts";
 
 const logger = new DefaultLogger();
@@ -92,14 +92,9 @@ describe("flag resolution", () => {
   for (const tc of flagResolutionCases) {
     it(`resolves ${tc.name} flags`, () =>
       withProvider(async (pool, provider) => {
-        await pool.query(`
-          INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-          VALUES ('${tc.flagKey}', '${tc.flagType}')
-        `);
-        await pool.query(`
-          INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-          VALUES ('${tc.flagKey}', '${tc.variant}', '${tc.flagType}', '${tc.dbValue}')
-        `);
+        await insertFlag(pool, tc.flagKey, tc.flagType, [
+          { name: tc.variant, value: tc.dbValue },
+        ]);
 
         await provider.initialize();
 
@@ -118,14 +113,9 @@ describe("flag resolution", () => {
 
   it("disabled flag returns default", () =>
     withProvider(async (pool, provider) => {
-      await pool.query(`
-        INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled)
-        VALUES ('disabled-flag', 'boolean', false)
-      `);
-      await pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-        VALUES ('disabled-flag', 'on', 'boolean', 'true')
-      `);
+      await insertFlag(pool, "disabled-flag", "boolean", [
+        { name: "on", value: "true" },
+      ], { enabled: false });
 
       await provider.initialize();
 
@@ -141,15 +131,12 @@ describe("flag resolution", () => {
 
   it("resolves multiple flags", () =>
     withProvider(async (pool, provider) => {
-      await pool.query(`
-        INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-        VALUES ('flag-a', 'boolean'), ('flag-b', 'string')
-      `);
-      await pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-        VALUES ('flag-a', 'on', 'boolean', 'true'),
-               ('flag-b', 'hello', 'string', '"world"')
-      `);
+      await insertFlag(pool, "flag-a", "boolean", [
+        { name: "on", value: "true" },
+      ]);
+      await insertFlag(pool, "flag-b", "string", [
+        { name: "hello", value: '"world"' },
+      ]);
 
       await provider.initialize();
 
@@ -186,14 +173,9 @@ describe("error handling", () => {
   for (const enabled of [true, false]) {
     it(`wrong type throws TypeMismatchError (enabled=${enabled})`, () =>
       withProvider(async (pool, provider) => {
-        await pool.query(`
-          INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled)
-          VALUES ('bool-flag', 'boolean', ${enabled})
-        `);
-        await pool.query(`
-          INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-          VALUES ('bool-flag', 'on', 'boolean', 'true')
-        `);
+        await insertFlag(pool, "bool-flag", "boolean", [
+          { name: "on", value: "true" },
+        ], { enabled });
 
         await provider.initialize();
 
@@ -208,15 +190,10 @@ describe("error handling", () => {
 describe("rollouts", () => {
   it("returns SPLIT reason with targeting key", () =>
     withProvider(async (pool, provider) => {
-      await pool.query(`
-        INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-        VALUES ('ab-test', 'string')
-      `);
-      await pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage)
-        VALUES ('ab-test', 'control', 'string', '"Control"', NULL),
-               ('ab-test', 'treatment', 'string', '"Treatment"', 50)
-      `);
+      await insertFlag(pool, "ab-test", "string", [
+        { name: "control", value: '"Control"' },
+        { name: "treatment", value: '"Treatment"', percentage: 50 },
+      ]);
 
       await provider.initialize();
 
@@ -232,15 +209,10 @@ describe("rollouts", () => {
 
   it("is deterministic for the same targeting key", () =>
     withProvider(async (pool, provider) => {
-      await pool.query(`
-        INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-        VALUES ('ab-test', 'string')
-      `);
-      await pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage)
-        VALUES ('ab-test', 'control', 'string', '"Control"', NULL),
-               ('ab-test', 'treatment', 'string', '"Treatment"', 50)
-      `);
+      await insertFlag(pool, "ab-test", "string", [
+        { name: "control", value: '"Control"' },
+        { name: "treatment", value: '"Treatment"', percentage: 50 },
+      ]);
 
       await provider.initialize();
 
@@ -259,15 +231,10 @@ describe("rollouts", () => {
 
   it("falls back to default variant without targeting key", () =>
     withProvider(async (pool, provider) => {
-      await pool.query(`
-        INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-        VALUES ('ab-test', 'string')
-      `);
-      await pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage)
-        VALUES ('ab-test', 'control', 'string', '"Control"', NULL),
-               ('ab-test', 'treatment', 'string', '"Treatment"', 50)
-      `);
+      await insertFlag(pool, "ab-test", "string", [
+        { name: "control", value: '"Control"' },
+        { name: "treatment", value: '"Treatment"', percentage: 50 },
+      ]);
 
       await provider.initialize();
 
@@ -287,16 +254,11 @@ describe("rollouts", () => {
     // This is the intended behaviour: treat percentages as weights when they
     // overflow, so 70/70 means the same as 50/50.
     return withProvider(async (pool, provider) => {
-      await pool.query(`
-        INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-        VALUES ('split-test', 'string')
-      `);
-      await pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage)
-        VALUES ('split-test', 'fallback', 'string', '"Fallback"', NULL),
-               ('split-test', 'a', 'string', '"A"', 70),
-               ('split-test', 'b', 'string', '"B"', 70)
-      `);
+      await insertFlag(pool, "split-test", "string", [
+        { name: "fallback", value: '"Fallback"' },
+        { name: "a", value: '"A"', percentage: 70 },
+        { name: "b", value: '"B"', percentage: 70 },
+      ]);
 
       await provider.initialize();
 
@@ -326,15 +288,10 @@ describe("rollouts", () => {
 
   it("100% rollout never falls through to default", () =>
     withProvider(async (pool, provider) => {
-      await pool.query(`
-        INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-        VALUES ('full-rollout', 'string')
-      `);
-      await pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage)
-        VALUES ('full-rollout', 'default', 'string', '"Default"', NULL),
-               ('full-rollout', 'treatment', 'string', '"Treatment"', 100)
-      `);
+      await insertFlag(pool, "full-rollout", "string", [
+        { name: "default", value: '"Default"' },
+        { name: "treatment", value: '"Treatment"', percentage: 100 },
+      ]);
 
       await provider.initialize();
 
@@ -434,14 +391,9 @@ describe("lifecycle", () => {
 describe("sync", () => {
   it("reconnects after connection loss", () =>
     withDb(async (pool) => {
-      await pool.query(`
-        INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-        VALUES ('test-flag', 'boolean')
-      `);
-      await pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-        VALUES ('test-flag', 'on', 'boolean', 'true')
-      `);
+      await insertFlag(pool, "test-flag", "boolean", [
+        { name: "on", value: "true" },
+      ]);
 
       const getListenerClient = interceptListenerClient(pool);
 
@@ -523,14 +475,9 @@ describe("sync", () => {
 
   it("skips ConfigurationChanged when unchanged", () =>
     withDb(async (pool) => {
-      await pool.query(`
-        INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-        VALUES ('stable-flag', 'boolean')
-      `);
-      await pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-        VALUES ('stable-flag', 'on', 'boolean', 'true')
-      `);
+      await insertFlag(pool, "stable-flag", "boolean", [
+        { name: "on", value: "true" },
+      ]);
 
       const provider = new PostgresProvider({
         pool,

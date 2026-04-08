@@ -19,6 +19,29 @@ export function createPool(pglite: PGlite): pg.Pool {
   return new Pool({ pglite }) as unknown as pg.Pool;
 }
 
+export async function insertFlag(
+  pool: pg.Pool,
+  key: string,
+  type: string,
+  variants: { name: string; value: string; percentage?: number }[],
+  { enabled = true } = {},
+) {
+  await pool.query(
+    `INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled) VALUES ('${key}', '${type}', ${enabled})`,
+  );
+  const rows = variants
+    .map(
+      (v) =>
+        `('${key}', '${v.name}', '${type}', '${v.value}', ${
+          v.percentage ?? "NULL"
+        })`,
+    )
+    .join(", ");
+  await pool.query(
+    `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage) VALUES ${rows}`,
+  );
+}
+
 export async function withDb(
   fn: (pool: pg.Pool) => Promise<void>,
   { applySchema = true } = {},
