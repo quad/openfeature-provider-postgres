@@ -343,7 +343,8 @@ Deno.test("rollouts > normalizes percentages > 100 proportionally", async () => 
     `);
     await pool.query(`
       INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default, percentage)
-      VALUES ('split-test', 'a', 'string', '"A"', true, 70),
+      VALUES ('split-test', 'fallback', 'string', '"Fallback"', true, NULL),
+             ('split-test', 'a', 'string', '"A"', NULL, 70),
              ('split-test', 'b', 'string', '"B"', NULL, 70)
     `);
 
