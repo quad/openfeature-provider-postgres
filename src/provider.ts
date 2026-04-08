@@ -29,13 +29,11 @@ interface FlagData {
 export interface PostgresProviderOptions {
   pool: pg.Pool;
   schema?: string;
-  channelName?: string;
-  syncIntervalMs?: number;
 }
 
 const DEFAULT_SCHEMA = "openfeature";
-const DEFAULT_CHANNEL = "flag_change";
-const DEFAULT_SYNC_INTERVAL_MS = 300_000;
+const CHANNEL_SUFFIX = "_flag_change";
+const SYNC_INTERVAL_MS = 300_000;
 const DEBOUNCE_MS = 100;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 
@@ -48,8 +46,6 @@ export class PostgresProvider implements Provider {
   private lastResultJson = "";
   private readonly pool: PostgresProviderOptions["pool"];
   private readonly schema: string;
-  private readonly channelName: string;
-  private readonly syncIntervalMs: number;
   private listener: Disposable | null = null;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
@@ -65,8 +61,6 @@ export class PostgresProvider implements Provider {
   constructor(options: PostgresProviderOptions) {
     this.pool = options.pool;
     this.schema = options.schema ?? DEFAULT_SCHEMA;
-    this.channelName = options.channelName ?? DEFAULT_CHANNEL;
-    this.syncIntervalMs = options.syncIntervalMs ?? DEFAULT_SYNC_INTERVAL_MS;
   }
 
   async initialize(_context?: EvaluationContext): Promise<void> {
@@ -76,13 +70,13 @@ export class PostgresProvider implements Provider {
 
     this.listener = await startNotifyListener(
       this.pool,
-      this.channelName,
+      this.schema + CHANNEL_SUFFIX,
       this.debouncedSync,
       this.debouncedSync,
       () => this.events.emit(ProviderEvents.Stale),
     );
 
-    this.syncInterval = setInterval(this.debouncedSync, this.syncIntervalMs).unref();
+    this.syncInterval = setInterval(this.debouncedSync, SYNC_INTERVAL_MS).unref();
     this.state = "ready";
   }
 

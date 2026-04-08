@@ -46,9 +46,10 @@ CREATE TRIGGER flag_variants_set_updated_at
     FOR EACH ROW EXECUTE FUNCTION openfeature.set_updated_at();
 
 -- Emit NOTIFY on any flag data change so the provider can refresh its cache.
+-- Channel is namespaced to the schema to avoid collisions in shared databases.
 CREATE FUNCTION openfeature.notify_flag_change() RETURNS TRIGGER AS $$
 BEGIN
-    NOTIFY flag_change;
+    NOTIFY openfeature_flag_change;
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;

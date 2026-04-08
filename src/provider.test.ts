@@ -28,7 +28,7 @@ async function setup() {
 
   const provider = new PostgresProvider({
     pool,
-    syncIntervalMs: 60_000_000, // effectively disabled for tests
+
   });
 
   return { pglite, pool, provider };
@@ -509,7 +509,7 @@ Deno.test("background sync > emits Stale when a notification-triggered sync fail
 
   const provider = new PostgresProvider({
     pool: wrappedPool,
-    syncIntervalMs: 60_000_000, // disabled — we trigger via NOTIFY instead
+
   });
 
   await provider.initialize();
@@ -520,7 +520,7 @@ Deno.test("background sync > emits Stale when a notification-triggered sync fail
   });
 
   // Trigger onNotification path via a direct NOTIFY
-  await pool.query("NOTIFY flag_change");
+  await pool.query("NOTIFY openfeature_flag_change");
   await stale;
 
   await provider.onClose();
@@ -544,7 +544,7 @@ Deno.test("background sync > does not emit ConfigurationChanged when nothing cha
 
   const provider = new PostgresProvider({
     pool,
-    syncIntervalMs: 60_000_000, // disabled — we trigger via NOTIFY instead
+
   });
 
   await provider.initialize();
@@ -556,7 +556,7 @@ Deno.test("background sync > does not emit ConfigurationChanged when nothing cha
 
   // Trigger a sync via NOTIFY without changing any data — cache is identical,
   // so ConfigurationChanged must not fire.
-  await pool.query("NOTIFY flag_change");
+  await pool.query("NOTIFY openfeature_flag_change");
   await new Promise((resolve) => setTimeout(resolve, 200));
 
   assertStrictEquals(changeCount, 0, "should not fire when cache is unchanged");

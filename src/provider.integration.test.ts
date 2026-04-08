@@ -28,7 +28,7 @@ Deno.test("Integration: initialize → insert → ConfigurationChanged → evalu
 
   const provider = new PostgresProvider({
     pool,
-    syncIntervalMs: 60_000_000,
+
   });
 
   await OpenFeature.setProviderAndWait("test", provider);
@@ -70,7 +70,7 @@ Deno.test("Integration: onClose cleanup is idempotent", async () => {
 
   const provider = new PostgresProvider({
     pool,
-    syncIntervalMs: 60_000_000,
+
   });
 
   await provider.initialize();
