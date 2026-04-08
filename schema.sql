@@ -33,15 +33,15 @@ CREATE TABLE openfeature.flag_variants (
 
 COMMENT ON COLUMN openfeature.flag_variants.percentage IS 'NULL = default/fallback variant, 0-100 = rollout participant';
 
+CREATE UNIQUE INDEX one_default_per_flag ON openfeature.flag_variants (flag_key)
+WHERE
+    percentage IS NULL;
+
 CREATE TABLE openfeature.flag_evaluations (
     flag_key varchar(255) PRIMARY KEY
         REFERENCES openfeature.feature_flags (flag_key) ON DELETE CASCADE,
     last_evaluated_at timestamptz NOT NULL DEFAULT now()
 );
-
-CREATE UNIQUE INDEX one_default_per_flag ON openfeature.flag_variants (flag_key)
-WHERE
-    percentage IS NULL;
 
 -- Automatic updated_at
 CREATE FUNCTION openfeature.set_updated_at ()

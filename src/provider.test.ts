@@ -517,19 +517,17 @@ describe("sync", () => {
     }));
 });
 
-// deno-lint-ignore no-explicit-any -- accessing private method for testing
-const flush = (p: PostgresProvider) => (p as any).flushEvaluations();
-
 describe("evaluation tracking", () => {
-  it("writes last_evaluated_at for resolved flags", () =>
-    withProvider(async (pool, provider) => {
+  it("writes last_evaluated_at on close", () =>
+    withDb(async (pool) => {
       await insertFlag(pool, "tracked", "boolean", [
         { name: "on", value: "true" },
       ]);
-      await provider.initialize();
 
+      const provider = new PostgresProvider({ pool });
+      await provider.initialize();
       await provider.resolveBooleanEvaluation("tracked", false, {}, logger);
-      await flush(provider);
+      await provider.onClose();
 
       const { rows } = await pool.query(
         "SELECT flag_key, last_evaluated_at FROM openfeature.flag_evaluations",
@@ -540,18 +538,19 @@ describe("evaluation tracking", () => {
     }));
 
   it("batches multiple flags in one flush", () =>
-    withProvider(async (pool, provider) => {
+    withDb(async (pool) => {
       await insertFlag(pool, "flag-a", "boolean", [
         { name: "on", value: "true" },
       ]);
       await insertFlag(pool, "flag-b", "string", [
         { name: "hi", value: '"hi"' },
       ]);
-      await provider.initialize();
 
+      const provider = new PostgresProvider({ pool });
+      await provider.initialize();
       await provider.resolveBooleanEvaluation("flag-a", false, {}, logger);
       await provider.resolveStringEvaluation("flag-b", "", {}, logger);
-      await flush(provider);
+      await provider.onClose();
 
       const { rows } = await pool.query(
         "SELECT flag_key FROM openfeature.flag_evaluations ORDER BY flag_key",
@@ -563,14 +562,20 @@ describe("evaluation tracking", () => {
     }));
 
   it("updates timestamp on repeated evaluation", () =>
-    withProvider(async (pool, provider) => {
+    withDb(async (pool) => {
       await insertFlag(pool, "repeat", "boolean", [
         { name: "on", value: "true" },
       ]);
-      await provider.initialize();
 
-      await provider.resolveBooleanEvaluation("repeat", false, {}, logger);
-      await flush(provider);
+      const first_provider = new PostgresProvider({ pool });
+      await first_provider.initialize();
+      await first_provider.resolveBooleanEvaluation(
+        "repeat",
+        false,
+        {},
+        logger,
+      );
+      await first_provider.onClose();
 
       const first = (await pool.query(
         "SELECT last_evaluated_at FROM openfeature.flag_evaluations WHERE flag_key = 'repeat'",
@@ -578,8 +583,15 @@ describe("evaluation tracking", () => {
 
       await delay(10);
 
-      await provider.resolveBooleanEvaluation("repeat", false, {}, logger);
-      await flush(provider);
+      const second_provider = new PostgresProvider({ pool });
+      await second_provider.initialize();
+      await second_provider.resolveBooleanEvaluation(
+        "repeat",
+        false,
+        {},
+        logger,
+      );
+      await second_provider.onClose();
 
       const second = (await pool.query(
         "SELECT last_evaluated_at FROM openfeature.flag_evaluations WHERE flag_key = 'repeat'",
@@ -589,14 +601,15 @@ describe("evaluation tracking", () => {
     }));
 
   it("tracks disabled flag evaluations", () =>
-    withProvider(async (pool, provider) => {
+    withDb(async (pool) => {
       await insertFlag(pool, "off-flag", "boolean", [
         { name: "on", value: "true" },
       ], false);
-      await provider.initialize();
 
+      const provider = new PostgresProvider({ pool });
+      await provider.initialize();
       await provider.resolveBooleanEvaluation("off-flag", false, {}, logger);
-      await flush(provider);
+      await provider.onClose();
 
       const { rows } = await pool.query(
         "SELECT flag_key FROM openfeature.flag_evaluations",
@@ -606,9 +619,10 @@ describe("evaluation tracking", () => {
     }));
 
   it("no-ops when no flags were evaluated", () =>
-    withProvider(async (pool, provider) => {
+    withDb(async (pool) => {
+      const provider = new PostgresProvider({ pool });
       await provider.initialize();
-      await flush(provider);
+      await provider.onClose();
 
       const { rows } = await pool.query(
         "SELECT count(*) as n FROM openfeature.flag_evaluations",

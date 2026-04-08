@@ -86,7 +86,6 @@ export class PostgresProvider implements Provider {
     this.state = "ready";
   }
 
-  // deno-lint-ignore require-await -- Provider interface requires Promise<void>
   async onClose(): Promise<void> {
     if (this.state !== "ready") return;
     this.state = "disposed";
@@ -94,6 +93,7 @@ export class PostgresProvider implements Provider {
     this.stopListener();
     if (this.syncInterval) clearInterval(this.syncInterval);
     this.debouncedSync.clear();
+    await this.flushEvaluations().catch(() => {});
   }
 
   // deno-lint-ignore require-await -- Provider interface requires Promise return
