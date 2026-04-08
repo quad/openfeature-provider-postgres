@@ -1,6 +1,6 @@
 import { assertStrictEquals } from "jsr:@std/assert@1";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
-import { PostgresProvider } from "./index.ts";
+import { PostgresProvider } from "./provider.ts";
 import {
   createPgLite,
   createPool,

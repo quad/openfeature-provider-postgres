@@ -2,7 +2,7 @@
   "name": "@quad/openfeature-provider-postgres",
   "version": "0.1.0",
   "license": "Apache-2.0",
-  "exports": "./src/index.ts",
+  "exports": "./src/provider.ts",
   "publish": {
     "exclude": ["**/*.test.ts"],
     "include": [
