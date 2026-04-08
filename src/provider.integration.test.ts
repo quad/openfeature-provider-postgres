@@ -1,14 +1,15 @@
 import { assertStrictEquals } from "jsr:@std/assert@1";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
 import { PostgresProvider } from "./provider.ts";
-import { createPgLite, createPool } from "./pglite-helper.test.ts";
+import { PGlite } from "npm:@electric-sql/pglite@^0.3.0";
+import { createPool } from "./pglite-helper.test.ts";
 
 const migration = Deno.readTextFileSync(
   new URL("../schema.sql", import.meta.url),
 );
 
 Deno.test("Integration: initialize → insert → ConfigurationChanged → evaluate", async () => {
-  const pglite = createPgLite();
+  const pglite = new PGlite();
   const pool = createPool(pglite);
   await pglite.exec(migration);
 
@@ -63,7 +64,7 @@ Deno.test("Integration: initialize → insert → ConfigurationChanged → evalu
 });
 
 Deno.test("Integration: onClose cleanup is idempotent", async () => {
-  const pglite = createPgLite();
+  const pglite = new PGlite();
   const pool = createPool(pglite);
   await pglite.exec(migration);
 

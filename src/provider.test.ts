@@ -10,7 +10,11 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
-import { createPgLite, createPool, logger } from "./pglite-helper.test.ts";
+import { PGlite } from "npm:@electric-sql/pglite@^0.3.0";
+import { DefaultLogger } from "@openfeature/server-sdk";
+import { createPool } from "./pglite-helper.test.ts";
+
+const logger = new DefaultLogger();
 import { PostgresProvider } from "./provider.ts";
 
 const migration = Deno.readTextFileSync(
@@ -18,7 +22,7 @@ const migration = Deno.readTextFileSync(
 );
 
 async function setup() {
-  const pglite = createPgLite();
+  const pglite = new PGlite();
   const pool = createPool(pglite);
   await pglite.exec(migration);
 
@@ -522,7 +526,7 @@ Deno.test("DB constraint enforcement > rejects empty variant", async () => {
 // ---------------------------------------------------------------------------
 
 Deno.test("initialize > propagates syncCache errors to the caller", async () => {
-  const pglite = createPgLite();
+  const pglite = new PGlite();
   const pool = createPool(pglite);
   // Do NOT run migration — the query inside syncCache will fail (schema missing)
   const provider = new PostgresProvider({
@@ -554,7 +558,7 @@ Deno.test("initialize > double-call is a no-op", async () => {
 // ---------------------------------------------------------------------------
 
 Deno.test("background sync > emits Stale when a notification-triggered sync fails", async () => {
-  const pglite = createPgLite();
+  const pglite = new PGlite();
   const pool = createPool(pglite);
   await pglite.exec(migration);
 
@@ -588,7 +592,7 @@ Deno.test("background sync > emits Stale when a notification-triggered sync fail
 });
 
 Deno.test("background sync > does not emit ConfigurationChanged when nothing changed", async () => {
-  const pglite = createPgLite();
+  const pglite = new PGlite();
   const pool = createPool(pglite);
   await pglite.exec(migration);
 
