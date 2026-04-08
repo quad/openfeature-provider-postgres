@@ -310,9 +310,9 @@ async function startNotifyListener(
 
   return {
     [Symbol.dispose]() {
-      const wasListening = state === "listening";
+      const shouldRelease = state === "listening";
       state = "stopped";
-      if (wasListening) client.release(true);
+      if (shouldRelease) client.release(true);
     },
   };
 }
