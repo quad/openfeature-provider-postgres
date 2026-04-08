@@ -174,55 +174,32 @@ Deno.test("error handling > throws FlagNotFoundError for missing flags", async (
   }
 });
 
-Deno.test("error handling > throws TypeMismatchError for wrong type", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('bool-flag', 'boolean')
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('bool-flag', 'on', 'boolean', 'true')
-    `);
+for (const enabled of [true, false]) {
+  Deno.test(`error handling > throws TypeMismatchError for wrong type (enabled=${enabled})`, async () => {
+    const { pglite, pool, provider } = await setup();
+    try {
+      await pool.query(`
+        INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled)
+        VALUES ('bool-flag', 'boolean', ${enabled})
+      `);
+      await pool.query(`
+        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
+        VALUES ('bool-flag', 'on', 'boolean', 'true')
+      `);
 
-    await provider.initialize();
+      await provider.initialize();
 
-    await assertRejects(
-      () => provider.resolveStringEvaluation("bool-flag", "", {}, logger),
-      TypeMismatchError,
-    );
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
-
-Deno.test("error handling > throws TypeMismatchError even when flag is disabled", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled)
-      VALUES ('bool-flag', 'boolean', false)
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('bool-flag', 'on', 'boolean', 'true')
-    `);
-
-    await provider.initialize();
-
-    await assertRejects(
-      () => provider.resolveStringEvaluation("bool-flag", "", {}, logger),
-      TypeMismatchError,
-    );
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+      await assertRejects(
+        () => provider.resolveStringEvaluation("bool-flag", "", {}, logger),
+        TypeMismatchError,
+      );
+    } finally {
+      await provider.onClose();
+      await pool.end();
+      await pglite.close();
+    }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Disabled flags
