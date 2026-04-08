@@ -1,3 +1,4 @@
 *.local.md
 .*.swp
 .claude
+coverage

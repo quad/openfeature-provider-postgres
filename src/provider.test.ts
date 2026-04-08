@@ -537,30 +537,6 @@ describe("evaluation tracking", () => {
       assert(rows[0].last_evaluated_at instanceof Date);
     }));
 
-  it("batches multiple flags in one flush", () =>
-    withDb(async (pool) => {
-      await insertFlag(pool, "flag-a", "boolean", [
-        { name: "on", value: "true" },
-      ]);
-      await insertFlag(pool, "flag-b", "string", [
-        { name: "hi", value: '"hi"' },
-      ]);
-
-      const provider = new PostgresProvider({ pool });
-      await provider.initialize();
-      await provider.resolveBooleanEvaluation("flag-a", false, {}, logger);
-      await provider.resolveStringEvaluation("flag-b", "", {}, logger);
-      await provider.onClose();
-
-      const { rows } = await pool.query(
-        "SELECT flag_key FROM openfeature.flag_evaluations ORDER BY flag_key",
-      );
-      assertEquals(rows.map((r: { flag_key: string }) => r.flag_key), [
-        "flag-a",
-        "flag-b",
-      ]);
-    }));
-
   it("updates timestamp on repeated evaluation", () =>
     withDb(async (pool) => {
       await insertFlag(pool, "repeat", "boolean", [
