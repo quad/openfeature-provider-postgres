@@ -30,6 +30,21 @@ CREATE UNIQUE INDEX one_default_per_flag
     ON openfeature.flag_variants (flag_key)
     WHERE percentage IS NULL;
 
+CREATE FUNCTION openfeature.set_updated_at() RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER feature_flags_set_updated_at
+    BEFORE UPDATE ON openfeature.feature_flags
+    FOR EACH ROW EXECUTE FUNCTION openfeature.set_updated_at();
+
+CREATE TRIGGER flag_variants_set_updated_at
+    BEFORE UPDATE ON openfeature.flag_variants
+    FOR EACH ROW EXECUTE FUNCTION openfeature.set_updated_at();
+
 -- Emit NOTIFY on any flag data change so the provider can refresh its cache.
 CREATE FUNCTION openfeature.notify_flag_change() RETURNS TRIGGER AS $$
 BEGIN
