@@ -342,120 +342,62 @@ Deno.test("rollouts > normalizes percentages > 100 proportionally", async () => 
 // DB constraint enforcement
 // ---------------------------------------------------------------------------
 
-Deno.test("DB constraint enforcement > rejects wrong-typed JSONB values", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('bool-flag', 'boolean')
-    `);
+const constraintCases = [
+  {
+    name: "rejects wrong-typed JSONB values",
+    setupSql: [
+      `INSERT INTO openfeature.feature_flags (flag_key, flag_type) VALUES ('bool-flag', 'boolean')`,
+    ],
+    badSql:
+      `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('bool-flag', 'on', 'boolean', '"not-a-boolean"')`,
+  },
+  {
+    name: "rejects JSONB arrays for object-type variants",
+    setupSql: [
+      `INSERT INTO openfeature.feature_flags (flag_key, flag_type) VALUES ('tags', 'object')`,
+    ],
+    badSql:
+      `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('tags', 'default', 'object', '["a", "b", "c"]')`,
+  },
+  {
+    name: "rejects a second default variant for the same flag",
+    setupSql: [
+      `INSERT INTO openfeature.feature_flags (flag_key, flag_type) VALUES ('my-flag', 'boolean')`,
+      `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', 'on', 'boolean', 'true')`,
+    ],
+    badSql:
+      `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', 'off', 'boolean', 'false')`,
+  },
+  {
+    name: "rejects empty flag_key",
+    setupSql: [],
+    badSql:
+      `INSERT INTO openfeature.feature_flags (flag_key, flag_type) VALUES ('', 'boolean')`,
+  },
+  {
+    name: "rejects empty variant",
+    setupSql: [
+      `INSERT INTO openfeature.feature_flags (flag_key, flag_type) VALUES ('my-flag', 'boolean')`,
+    ],
+    badSql:
+      `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', '', 'boolean', 'true')`,
+  },
+];
 
-    await assertRejects(
-      () =>
-        pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-        VALUES ('bool-flag', 'on', 'boolean', '"not-a-boolean"')
-      `),
-      Error,
-      "check",
-    );
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
-
-Deno.test("DB constraint enforcement > rejects JSONB arrays for object-type variants", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('tags', 'object')
-    `);
-
-    await assertRejects(
-      () =>
-        pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-        VALUES ('tags', 'default', 'object', '["a", "b", "c"]')
-      `),
-      Error,
-      "check",
-    );
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
-
-Deno.test("DB constraint enforcement > rejects a second default variant for the same flag", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('my-flag', 'boolean')
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('my-flag', 'on', 'boolean', 'true')
-    `);
-
-    await assertRejects(
-      () =>
-        pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-        VALUES ('my-flag', 'off', 'boolean', 'false')
-      `),
-      Error,
-    );
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
-
-Deno.test("DB constraint enforcement > rejects empty flag_key", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await assertRejects(
-      () =>
-        pool.query(`
-        INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-        VALUES ('', 'boolean')
-      `),
-      Error,
-    );
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
-
-Deno.test("DB constraint enforcement > rejects empty variant", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('my-flag', 'boolean')
-    `);
-    await assertRejects(
-      () =>
-        pool.query(`
-        INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-        VALUES ('my-flag', '', 'boolean', 'true')
-      `),
-      Error,
-    );
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
+for (const tc of constraintCases) {
+  Deno.test(`DB constraint enforcement > ${tc.name}`, async () => {
+    const pglite = new PGlite();
+    const pool = createPool(pglite);
+    await pglite.exec(migration);
+    try {
+      for (const sql of tc.setupSql) await pool.query(sql);
+      await assertRejects(() => pool.query(tc.badSql), Error);
+    } finally {
+      await pool.end();
+      await pglite.close();
+    }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // initialize() behaviour
