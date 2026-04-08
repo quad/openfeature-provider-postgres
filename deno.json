@@ -23,6 +23,7 @@
     "@middle-management/pglite-pg-adapter": "npm:@middle-management/pglite-pg-adapter@^0.0.4",
     "@openfeature/server-sdk": "npm:@openfeature/server-sdk@^1.13.0",
     "@std/async": "jsr:@std/async@^1",
+    "@std/testing": "jsr:@std/testing@^1",
     "exponential-backoff": "npm:exponential-backoff@^3.1.2",
     "pg": "npm:pg@^8.13.0",
     "xxh32": "npm:xxh32@^2.0.5"
