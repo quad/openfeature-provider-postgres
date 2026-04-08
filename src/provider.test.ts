@@ -577,6 +577,36 @@ Deno.test("background sync > reconnects after connection loss", async () => {
   await pglite.close();
 });
 
+Deno.test("background sync > dispose during reconnection does not throw", async () => {
+  const pglite = new PGlite();
+  const pool = createPool(pglite);
+  await pglite.exec(migration);
+
+  let listenerClient:
+    | { emit: (event: string, ...args: unknown[]) => void }
+    | null = null;
+  const origConnect = pool.connect.bind(pool);
+  // deno-lint-ignore no-explicit-any
+  (pool as any).connect = async () => {
+    const c = await origConnect();
+    listenerClient = c;
+    return c;
+  };
+
+  const provider = new PostgresProvider({ pool });
+  await provider.initialize();
+
+  // Simulate connection loss to enter reconnecting state
+  listenerClient!.emit("error", new Error("simulated disconnect"));
+
+  // Immediately close while reconnection is in-flight
+  await provider.onClose();
+
+  // Should not throw, backoff should stop retrying
+  await pool.end();
+  await pglite.close();
+});
+
 Deno.test("background sync > emits Stale when a notification-triggered sync fails", async () => {
   const pglite = new PGlite();
   const pool = createPool(pglite);
