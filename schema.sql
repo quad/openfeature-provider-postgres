@@ -30,8 +30,6 @@ CREATE UNIQUE INDEX one_default_per_flag
     ON openfeature.flag_variants (flag_key)
     WHERE percentage IS NULL;
 
--- Every table in this schema needs set_updated_at (BEFORE UPDATE) and
--- notify_flag_change (AFTER INSERT/UPDATE/DELETE) triggers.
 CREATE FUNCTION openfeature.set_updated_at() RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = now();
