@@ -25,7 +25,7 @@ CREATE TABLE openfeature.flag_variants (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (jsonb_typeof(value) = flag_type),
-    CHECK (NOT (is_default AND percentage IS NOT NULL)),
+    CHECK (is_default IS NULL OR percentage IS NULL),
     PRIMARY KEY (flag_key, variant),
     UNIQUE (flag_key, is_default),
     FOREIGN KEY (flag_key, flag_type) REFERENCES openfeature.feature_flags(flag_key, flag_type)
