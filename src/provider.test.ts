@@ -118,7 +118,7 @@ for (const tc of flagResolutionCases) {
     }));
 }
 
-Deno.test("flag resolution > disabled flag returns default value with DISABLED reason", () =>
+Deno.test("flag resolution > disabled flag returns default", () =>
   withProvider(async (pool, provider) => {
     await pool.query(`
       INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled)
@@ -141,7 +141,7 @@ Deno.test("flag resolution > disabled flag returns default value with DISABLED r
     assertStrictEquals(result.reason, StandardResolutionReasons.DISABLED);
   }));
 
-Deno.test("flag resolution > resolves multiple flags simultaneously", () =>
+Deno.test("flag resolution > resolves multiple flags", () =>
   withProvider(async (pool, provider) => {
     await pool.query(`
       INSERT INTO openfeature.feature_flags (flag_key, flag_type)
@@ -171,7 +171,7 @@ Deno.test("flag resolution > resolves multiple flags simultaneously", () =>
 // Error handling
 // ---------------------------------------------------------------------------
 
-Deno.test("error handling > throws FlagNotFoundError for missing flags", () =>
+Deno.test("error handling > missing flag throws FlagNotFoundError", () =>
   withProvider(async (_pool, provider) => {
     await provider.initialize();
 
@@ -182,7 +182,7 @@ Deno.test("error handling > throws FlagNotFoundError for missing flags", () =>
   }));
 
 for (const enabled of [true, false]) {
-  Deno.test(`error handling > throws TypeMismatchError for wrong type (enabled=${enabled})`, () =>
+  Deno.test(`error handling > wrong type throws TypeMismatchError (enabled=${enabled})`, () =>
     withProvider(async (pool, provider) => {
       await pool.query(`
         INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled)
@@ -281,7 +281,7 @@ Deno.test("rollouts > falls back to default variant without targeting key", () =
     assertStrictEquals(result.reason, StandardResolutionReasons.STATIC);
   }));
 
-Deno.test("rollouts > normalizes percentages > 100 proportionally", () => {
+Deno.test("rollouts > normalizes percentages exceeding 100", () => {
   // 70 + 70 = 140 total. Math.max(140, 100) = 140 as bucket divisor.
   // Buckets 0–69 → 'a' (50%), buckets 70–139 → 'b' (50%).
   // This is the intended behaviour: treat percentages as weights when they
@@ -351,7 +351,7 @@ Deno.test("rollouts > 100% rollout never falls through to default", () =>
   }));
 
 // ---------------------------------------------------------------------------
-// DB constraint enforcement
+// Schema constraints
 // ---------------------------------------------------------------------------
 
 const constraintCases = [
@@ -405,10 +405,10 @@ for (const tc of constraintCases) {
 }
 
 // ---------------------------------------------------------------------------
-// initialize() behaviour
+// Lifecycle
 // ---------------------------------------------------------------------------
 
-Deno.test("initialize > propagates syncCache errors to the caller", () =>
+Deno.test("lifecycle > initialize fails if schema is missing", () =>
   // Deliberately skip schema — syncCache will fail
   withDb(async (pool) => {
     const provider = new PostgresProvider({ pool });
@@ -416,18 +416,18 @@ Deno.test("initialize > propagates syncCache errors to the caller", () =>
     await provider.onClose();
   }, { applySchema: false }));
 
-Deno.test("initialize > double-call is a no-op", () =>
+Deno.test("lifecycle > initialize is idempotent", () =>
   withProvider(async (_pool, provider) => {
     await provider.initialize();
     await provider.initialize(); // should not throw or create a second listener
   }));
 
-Deno.test("initialize > onClose before initialize is a no-op", () =>
+Deno.test("lifecycle > onClose before initialize", () =>
   withProvider(async (_pool, provider) => {
     await provider.onClose(); // should not throw on uninitialized provider
   }));
 
-Deno.test("initialize > initialize after onClose is a no-op", () =>
+Deno.test("lifecycle > initialize after onClose", () =>
   withProvider(async (_pool, provider) => {
     await provider.initialize();
     await provider.onClose();
@@ -435,10 +435,10 @@ Deno.test("initialize > initialize after onClose is a no-op", () =>
   }));
 
 // ---------------------------------------------------------------------------
-// Background sync behaviour
+// Sync
 // ---------------------------------------------------------------------------
 
-Deno.test("background sync > reconnects after connection loss", () =>
+Deno.test("sync > reconnects after connection loss", () =>
   withDb(async (pool) => {
     await pool.query(`
       INSERT INTO openfeature.feature_flags (flag_key, flag_type)
@@ -481,7 +481,7 @@ Deno.test("background sync > reconnects after connection loss", () =>
     }
   }));
 
-Deno.test("background sync > dispose during reconnection does not throw", () =>
+Deno.test("sync > dispose during reconnection", () =>
   withDb(async (pool) => {
     const getListenerClient = interceptListenerClient(pool);
 
@@ -496,7 +496,7 @@ Deno.test("background sync > dispose during reconnection does not throw", () =>
     await provider.onClose();
   }));
 
-Deno.test("background sync > emits Stale when a notification-triggered sync fails", () =>
+Deno.test("sync > emits Stale on query failure", () =>
   withDb(async (pool) => {
     let failQueries = false;
     const wrappedPool = {
@@ -527,7 +527,7 @@ Deno.test("background sync > emits Stale when a notification-triggered sync fail
     }
   }));
 
-Deno.test("background sync > does not emit ConfigurationChanged when nothing changed", () =>
+Deno.test("sync > skips ConfigurationChanged when unchanged", () =>
   withDb(async (pool) => {
     await pool.query(`
       INSERT INTO openfeature.feature_flags (flag_key, flag_type)

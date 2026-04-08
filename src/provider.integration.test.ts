@@ -3,7 +3,7 @@ import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
 import { PostgresProvider } from "./provider.ts";
 import { withDb } from "./pglite-helper.test.ts";
 
-Deno.test("Integration: initialize → insert → ConfigurationChanged → evaluate", () =>
+Deno.test("end-to-end flag change via NOTIFY", () =>
   withDb(async (pool) => {
     await pool.query(`
       INSERT INTO openfeature.feature_flags (flag_key, flag_type)
@@ -48,7 +48,7 @@ Deno.test("Integration: initialize → insert → ConfigurationChanged → evalu
     await OpenFeature.clearProviders();
   }));
 
-Deno.test("Integration: onClose cleanup is idempotent", () =>
+Deno.test("onClose is idempotent", () =>
   withDb(async (pool) => {
     const provider = new PostgresProvider({ pool });
     await provider.initialize();
