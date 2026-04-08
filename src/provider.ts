@@ -50,8 +50,15 @@ export class PostgresProvider implements Provider {
   private readonly syncIntervalMs: number;
   private listener: Disposable | null = null;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
-  private debouncedSync: ReturnType<typeof debounce> | null = null;
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
+
+  private readonly debouncedSync = debounce(() => {
+    this.syncCache().then((changed) => {
+      if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
+    }).catch(() => {
+      this.events.emit(ProviderEvents.Stale);
+    });
+  }, 100);
 
   constructor(options: PostgresProviderOptions) {
     this.pool = options.pool;
@@ -65,23 +72,15 @@ export class PostgresProvider implements Provider {
 
     await this.syncCache();
 
-    const sync = this.debouncedSync = debounce(() => {
-      this.syncCache().then((changed) => {
-        if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
-      }).catch(() => {
-        this.events.emit(ProviderEvents.Stale);
-      });
-    }, 100);
-
     this.listener = await startNotifyListener(
       this.pool,
       this.channelName,
-      sync,
-      sync,
+      this.debouncedSync,
+      this.debouncedSync,
       () => this.events.emit(ProviderEvents.Stale),
     );
 
-    this.syncInterval = setInterval(sync, this.syncIntervalMs).unref();
+    this.syncInterval = setInterval(this.debouncedSync, this.syncIntervalMs).unref();
     this.state = "ready";
   }
 
@@ -89,7 +88,7 @@ export class PostgresProvider implements Provider {
     if (this.state !== "ready") return;
     this.state = "disposed";
 
-    this.debouncedSync?.clear();
+    this.debouncedSync.clear();
     if (this.syncInterval) clearInterval(this.syncInterval);
     this.listener?.[Symbol.dispose]();
   }
