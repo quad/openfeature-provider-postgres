@@ -36,6 +36,8 @@ export interface PostgresProviderOptions {
 const DEFAULT_SCHEMA = "openfeature";
 const DEFAULT_CHANNEL = "flag_change";
 const DEFAULT_SYNC_INTERVAL_MS = 300_000;
+const DEBOUNCE_MS = 100;
+const RECONNECT_MAX_DELAY_MS = 30_000;
 
 export class PostgresProvider implements Provider {
   readonly metadata = { name: "openfeature-provider-postgres" };
@@ -58,7 +60,7 @@ export class PostgresProvider implements Provider {
     }).catch(() => {
       this.events.emit(ProviderEvents.Stale);
     });
-  }, 100);
+  }, DEBOUNCE_MS);
 
   constructor(options: PostgresProviderOptions) {
     this.pool = options.pool;
@@ -292,7 +294,7 @@ async function startNotifyListener(
     onConnectionLost();
     backOff(async () => { client = await connect(); }, {
       numOfAttempts: Infinity,
-      maxDelay: 30_000,
+      maxDelay: RECONNECT_MAX_DELAY_MS,
       jitter: "full",
       retry: () => state !== "stopped",
     })
