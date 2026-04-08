@@ -220,10 +220,9 @@ export class PostgresProvider implements Provider {
         fv.variant,
         fv.value,
         fv.is_default,
-        fr.percentage
+        fv.percentage
       FROM ${s}.feature_flags ff
       JOIN ${s}.flag_variants fv USING (flag_key, flag_type)
-      LEFT JOIN ${s}.flag_rollouts fr USING (flag_key, variant)
       ORDER BY ff.flag_key, fv.variant
     `);
 

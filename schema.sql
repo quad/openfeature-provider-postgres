@@ -21,23 +21,13 @@ CREATE TABLE openfeature.flag_variants (
     flag_type  TEXT NOT NULL,
     value      JSONB NOT NULL,
     is_default BOOLEAN CHECK (is_default IS NULL OR is_default),
+    percentage INTEGER CHECK (percentage IS NULL OR percentage BETWEEN 0 AND 100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (jsonb_typeof(value) = flag_type),
     PRIMARY KEY (flag_key, variant),
     UNIQUE (flag_key, is_default),
     FOREIGN KEY (flag_key, flag_type) REFERENCES openfeature.feature_flags(flag_key, flag_type)
-);
-
--- Percentage rollouts per variant
-CREATE TABLE openfeature.flag_rollouts (
-    flag_key   TEXT NOT NULL,
-    variant    TEXT NOT NULL,
-    percentage INTEGER NOT NULL CHECK (percentage BETWEEN 0 AND 100),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (flag_key, variant),
-    FOREIGN KEY (flag_key, variant) REFERENCES openfeature.flag_variants(flag_key, variant)
 );
 
 -- Notify on any flag change
@@ -63,14 +53,5 @@ CREATE TRIGGER flag_variants_notify
 
 CREATE TRIGGER flag_variants_notify_update
     AFTER UPDATE ON openfeature.flag_variants
-    FOR EACH ROW WHEN (OLD.* IS DISTINCT FROM NEW.*)
-    EXECUTE FUNCTION openfeature.notify_flag_change();
-
-CREATE TRIGGER flag_rollouts_notify
-    AFTER INSERT OR DELETE ON openfeature.flag_rollouts
-    FOR EACH ROW EXECUTE FUNCTION openfeature.notify_flag_change();
-
-CREATE TRIGGER flag_rollouts_notify_update
-    AFTER UPDATE ON openfeature.flag_rollouts
     FOR EACH ROW WHEN (OLD.* IS DISTINCT FROM NEW.*)
     EXECUTE FUNCTION openfeature.notify_flag_change();

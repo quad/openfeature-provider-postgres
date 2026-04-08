@@ -245,13 +245,9 @@ Deno.test("rollouts > returns SPLIT reason with targeting key", async () => {
       VALUES ('ab-test', 'string')
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
-      VALUES ('ab-test', 'control', 'string', '"Control"', true),
-             ('ab-test', 'treatment', 'string', '"Treatment"', NULL)
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_rollouts (flag_key, variant, percentage)
-      VALUES ('ab-test', 'treatment', 50)
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default, percentage)
+      VALUES ('ab-test', 'control', 'string', '"Control"', true, NULL),
+             ('ab-test', 'treatment', 'string', '"Treatment"', NULL, 50)
     `);
 
     await provider.initialize();
@@ -279,13 +275,9 @@ Deno.test("rollouts > is deterministic for the same targeting key", async () => 
       VALUES ('ab-test', 'string')
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
-      VALUES ('ab-test', 'control', 'string', '"Control"', true),
-             ('ab-test', 'treatment', 'string', '"Treatment"', NULL)
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_rollouts (flag_key, variant, percentage)
-      VALUES ('ab-test', 'treatment', 50)
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default, percentage)
+      VALUES ('ab-test', 'control', 'string', '"Control"', true, NULL),
+             ('ab-test', 'treatment', 'string', '"Treatment"', NULL, 50)
     `);
 
     await provider.initialize();
@@ -316,13 +308,9 @@ Deno.test("rollouts > falls back to default variant without targeting key", asyn
       VALUES ('ab-test', 'string')
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
-      VALUES ('ab-test', 'control', 'string', '"Control"', true),
-             ('ab-test', 'treatment', 'string', '"Treatment"', NULL)
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_rollouts (flag_key, variant, percentage)
-      VALUES ('ab-test', 'treatment', 50)
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default, percentage)
+      VALUES ('ab-test', 'control', 'string', '"Control"', true, NULL),
+             ('ab-test', 'treatment', 'string', '"Treatment"', NULL, 50)
     `);
 
     await provider.initialize();
@@ -354,14 +342,9 @@ Deno.test("rollouts > normalizes percentages > 100 proportionally", async () => 
       VALUES ('split-test', 'string')
     `);
     await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
-      VALUES ('split-test', 'a', 'string', '"A"', true),
-             ('split-test', 'b', 'string', '"B"', NULL)
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_rollouts (flag_key, variant, percentage)
-      VALUES ('split-test', 'a', 70),
-             ('split-test', 'b', 70)
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default, percentage)
+      VALUES ('split-test', 'a', 'string', '"A"', true, 70),
+             ('split-test', 'b', 'string', '"B"', NULL, 70)
     `);
 
     await provider.initialize();
