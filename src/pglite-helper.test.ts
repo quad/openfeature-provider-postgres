@@ -15,7 +15,7 @@ const schema = Deno.readTextFileSync(
 );
 
 export function createPool(pglite: PGlite): pg.Pool {
-  // @ts-ignore: PGlite ESM/CTS dual-package type mismatch
+  // @ts-expect-error: PGlite ESM/CTS dual-package type mismatch
   return new Pool({ pglite }) as unknown as pg.Pool;
 }
 

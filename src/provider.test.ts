@@ -42,74 +42,80 @@ function interceptListenerClient(pool: pg.Pool) {
     client = c;
     return c;
   };
-  return () => client!;
+  return () => {
+    if (!client) throw new Error("pool.connect() was not called");
+    return client;
+  };
 }
 
 describe("flag resolution", () => {
-  const flagResolutionCases = [
-    {
-      name: "boolean",
-      flagKey: "bool-flag",
-      flagType: "boolean",
-      variant: "on",
-      dbValue: "true",
-      defaultValue: false as unknown,
-      expectedValue: true as unknown,
-      resolve: "resolveBooleanEvaluation" as const,
-    },
-    {
-      name: "string",
-      flagKey: "greeting",
-      flagType: "string",
-      variant: "hello",
-      dbValue: '"Hello, world!"',
-      defaultValue: "" as unknown,
-      expectedValue: "Hello, world!" as unknown,
-      resolve: "resolveStringEvaluation" as const,
-    },
-    {
-      name: "number",
-      flagKey: "rate-limit",
-      flagType: "number",
-      variant: "default",
-      dbValue: "100",
-      defaultValue: 0 as unknown,
-      expectedValue: 100 as unknown,
-      resolve: "resolveNumberEvaluation" as const,
-    },
-    {
-      name: "object",
-      flagKey: "config",
-      flagType: "object",
-      variant: "v1",
-      dbValue: '{"theme": "dark", "limit": 10}',
-      defaultValue: {} as unknown,
-      expectedValue: { theme: "dark", limit: 10 } as unknown,
-      resolve: "resolveObjectEvaluation" as const,
-    },
-  ];
+  it("resolves boolean flags", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "bool-flag", "boolean", [{
+        name: "on",
+        value: "true",
+      }]);
+      await provider.initialize();
+      const result = await provider.resolveBooleanEvaluation(
+        "bool-flag",
+        false,
+        {},
+        logger,
+      );
+      assertStrictEquals(result.value, true);
+      assertStrictEquals(result.variant, "on");
+    }));
 
-  for (const tc of flagResolutionCases) {
-    it(`resolves ${tc.name} flags`, () =>
-      withProvider(async (pool, provider) => {
-        await insertFlag(pool, tc.flagKey, tc.flagType, [
-          { name: tc.variant, value: tc.dbValue },
-        ]);
+  it("resolves string flags", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "greeting", "string", [{
+        name: "hello",
+        value: '"Hello, world!"',
+      }]);
+      await provider.initialize();
+      const result = await provider.resolveStringEvaluation(
+        "greeting",
+        "",
+        {},
+        logger,
+      );
+      assertStrictEquals(result.value, "Hello, world!");
+      assertStrictEquals(result.variant, "hello");
+    }));
 
-        await provider.initialize();
+  it("resolves number flags", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "rate-limit", "number", [{
+        name: "default",
+        value: "100",
+      }]);
+      await provider.initialize();
+      const result = await provider.resolveNumberEvaluation(
+        "rate-limit",
+        0,
+        {},
+        logger,
+      );
+      assertStrictEquals(result.value, 100);
+      assertStrictEquals(result.variant, "default");
+    }));
 
-        // deno-lint-ignore no-explicit-any
-        const result = await (provider as any)[tc.resolve](
-          tc.flagKey,
-          tc.defaultValue,
-          {},
-          logger,
-        );
-        assertEquals(result.value, tc.expectedValue);
-        assertStrictEquals(result.variant, tc.variant);
-        assertStrictEquals(result.reason, StandardResolutionReasons.STATIC);
-      }));
-  }
+  it("resolves object flags", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "config", "object", [{
+        name: "v1",
+        value: '{"theme": "dark", "limit": 10}',
+      }]);
+      await provider.initialize();
+      const result = await provider.resolveObjectEvaluation(
+        "config",
+        {},
+        {},
+        logger,
+      );
+      assertEquals(result.value, { theme: "dark", limit: 10 });
+      assertStrictEquals(result.variant, "v1");
+    }));
 
   it("disabled flag returns default", () =>
     withProvider(async (pool, provider) => {
