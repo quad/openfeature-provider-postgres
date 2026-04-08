@@ -121,7 +121,7 @@ describe("flag resolution", () => {
     withProvider(async (pool, provider) => {
       await insertFlag(pool, "disabled-flag", "boolean", [
         { name: "on", value: "true" },
-      ], { enabled: false });
+      ], false);
 
       await provider.initialize();
 
@@ -181,7 +181,7 @@ describe("error handling", () => {
       withProvider(async (pool, provider) => {
         await insertFlag(pool, "bool-flag", "boolean", [
           { name: "on", value: "true" },
-        ], { enabled });
+        ], enabled);
 
         await provider.initialize();
 

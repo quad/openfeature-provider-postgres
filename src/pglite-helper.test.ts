@@ -27,7 +27,7 @@ export async function insertFlag(
   key: string,
   type: string,
   variants: { name: string; value: string; percentage?: number }[],
-  { enabled = true } = {},
+  enabled = true,
 ) {
   await pool.query(
     `INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled) VALUES ('${key}', '${type}', ${enabled})`,
