@@ -12,7 +12,7 @@ import {
   TypeMismatchError,
 } from "@openfeature/server-sdk";
 import type pg from "pg";
-import { withDb } from "./pglite-helper.test.ts";
+import { createPool, withDb } from "./pglite-helper.test.ts";
 import { PostgresProvider } from "./provider.ts";
 
 const logger = new DefaultLogger();
@@ -409,15 +409,11 @@ for (const tc of constraintCases) {
 // ---------------------------------------------------------------------------
 
 Deno.test("initialize > propagates syncCache errors to the caller", async () => {
+  // Deliberately skip schema creation — syncCache will fail (schema missing)
   const { PGlite } = await import("@electric-sql/pglite");
-  const { Pool } = await import("@middle-management/pglite-pg-adapter");
   const pglite = new PGlite();
-  // @ts-ignore: PGlite ESM/CTS dual-package type mismatch
-  const pool = new Pool({ pglite }) as unknown as pg.Pool;
-  // Do NOT run migration — the query inside syncCache will fail (schema missing)
-  const provider = new PostgresProvider({
-    pool,
-  });
+  const pool = createPool(pglite);
+  const provider = new PostgresProvider({ pool });
   try {
     await assertRejects(() => provider.initialize(), Error);
   } finally {
