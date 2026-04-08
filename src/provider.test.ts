@@ -11,9 +11,8 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
-import { PGlite } from "@electric-sql/pglite";
 import type pg from "pg";
-import { createPool, withDb } from "./pglite-helper.test.ts";
+import { withDb } from "./pglite-helper.test.ts";
 import { PostgresProvider } from "./provider.ts";
 
 const logger = new DefaultLogger();
@@ -409,17 +408,13 @@ for (const tc of constraintCases) {
 // initialize() behaviour
 // ---------------------------------------------------------------------------
 
-Deno.test("initialize > propagates syncCache errors to the caller", async () => {
-  // Deliberately skip schema creation — syncCache will fail (schema missing)
-  await using stack = new AsyncDisposableStack();
-  const pglite = stack.adopt(new PGlite(), (p) => p.close());
-  const pool = stack.adopt(createPool(pglite), (p) => p.end());
-  const provider = stack.adopt(
-    new PostgresProvider({ pool }),
-    (p) => p.onClose(),
-  );
-  await assertRejects(() => provider.initialize(), Error);
-});
+Deno.test("initialize > propagates syncCache errors to the caller", () =>
+  // Deliberately skip schema — syncCache will fail
+  withDb(async (pool) => {
+    const provider = new PostgresProvider({ pool });
+    await assertRejects(() => provider.initialize(), Error);
+    await provider.onClose();
+  }, { applySchema: false }));
 
 Deno.test("initialize > double-call is a no-op", () =>
   withProvider(async (_pool, provider) => {
