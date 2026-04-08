@@ -44,7 +44,7 @@ export class PostgresProvider implements Provider {
 
   private cache = new Map<string, FlagData>();
   private lastResultJson = "";
-  private readonly pool: PostgresProviderOptions["pool"];
+  private readonly pool: pg.Pool;
   private readonly schema: string;
   private stopListener: (() => void) | null = null;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
