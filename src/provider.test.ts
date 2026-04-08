@@ -10,7 +10,7 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
-import { PGlite } from "npm:@electric-sql/pglite@^0.3.0";
+import { PGlite } from "@electric-sql/pglite";
 import { DefaultLogger } from "@openfeature/server-sdk";
 import { createPool } from "./pglite-helper.test.ts";
 

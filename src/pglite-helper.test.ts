@@ -6,8 +6,8 @@
  * type. This module does the cast once so individual test files stay clean.
  */
 
-import type { PGlite } from "npm:@electric-sql/pglite@^0.3.0";
-import { Pool } from "npm:@middle-management/pglite-pg-adapter@^0.0.4";
+import type { PGlite } from "@electric-sql/pglite";
+import { Pool } from "@middle-management/pglite-pg-adapter";
 import type pg from "pg";
 
 export function createPool(pglite: PGlite): pg.Pool {

@@ -1,7 +1,7 @@
 import { assertStrictEquals } from "jsr:@std/assert@1";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
 import { PostgresProvider } from "./provider.ts";
-import { PGlite } from "npm:@electric-sql/pglite@^0.3.0";
+import { PGlite } from "@electric-sql/pglite";
 import { createPool } from "./pglite-helper.test.ts";
 
 const migration = Deno.readTextFileSync(
