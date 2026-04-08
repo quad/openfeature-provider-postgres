@@ -416,14 +416,22 @@ describe("sync", () => {
 
       // Simulate connection loss
       getListenerClient().emit("error", new Error("simulated disconnect"));
-
-      // Should emit Stale
       await stale;
 
-      // Wait for backoff to reconnect and sync
-      await new Promise((r) => setTimeout(r, 500));
+      // Insert a new flag while disconnected — after reconnect, the sync will
+      // see the change and emit ConfigurationChanged, which we await.
+      await insertFlag(pool, "added-while-down", "boolean", [
+        { name: "on", value: "true" },
+      ]);
+      const changed = new Promise<void>((resolve) => {
+        provider.events.addHandler(
+          ProviderEvents.ConfigurationChanged,
+          () => resolve(),
+        );
+      });
+      await changed;
 
-      // Provider should still work after reconnection
+      // Provider should work after reconnection
       const result = await provider.resolveBooleanEvaluation(
         "test-flag",
         false,
@@ -497,7 +505,7 @@ describe("sync", () => {
       // Trigger a sync via NOTIFY without changing any data — cache is identical,
       // so ConfigurationChanged must not fire.
       await pool.query("NOTIFY openfeature_flag_change");
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       assertStrictEquals(
         changeCount,
