@@ -36,7 +36,7 @@ function interceptListenerClient(pool: pg.Pool) {
   let client: { emit: (event: string, ...args: unknown[]) => void } | null =
     null;
   const origConnect = pool.connect.bind(pool);
-  // deno-lint-ignore no-explicit-any
+  // deno-lint-ignore no-explicit-any -- monkey-patching a method requires `as any`
   (pool as any).connect = async () => {
     const c = await origConnect();
     client = c;
@@ -457,7 +457,7 @@ describe("sync", () => {
           if (failQueries) return Promise.reject(new Error("DB down"));
           return pool.query(sql);
         },
-      } as unknown as typeof pool;
+      } as unknown as typeof pool; // partial mock — only implements connect/query
 
       const provider = new PostgresProvider({
         pool: wrappedPool,
