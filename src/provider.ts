@@ -1,5 +1,4 @@
 import { clearInterval, setInterval } from "node:timers";
-import { debounce } from "@std/async/debounce";
 import type {
   EvaluationContext,
   JsonValue,
@@ -15,6 +14,7 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
+import { debounce } from "@std/async/debounce";
 import { backOff } from "exponential-backoff";
 import pg from "pg";
 import { xxh32 } from "xxh32";
