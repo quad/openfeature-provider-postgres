@@ -13,9 +13,9 @@ import {
 import { PGlite } from "@electric-sql/pglite";
 import { DefaultLogger } from "@openfeature/server-sdk";
 import { createPool } from "./pglite-helper.test.ts";
+import { PostgresProvider } from "./provider.ts";
 
 const logger = new DefaultLogger();
-import { PostgresProvider } from "./provider.ts";
 
 const migration = Deno.readTextFileSync(
   new URL("../schema.sql", import.meta.url),
@@ -31,6 +31,20 @@ async function setup() {
   });
 
   return { pglite, pool, provider };
+}
+
+/** Wraps pool.connect to capture the listener's internal client for testing. */
+function interceptListenerClient(pool: ReturnType<typeof createPool>) {
+  let client: { emit: (event: string, ...args: unknown[]) => void } | null =
+    null;
+  const origConnect = pool.connect.bind(pool);
+  // deno-lint-ignore no-explicit-any
+  (pool as any).connect = async () => {
+    const c = await origConnect();
+    client = c;
+    return c;
+  };
+  return () => client!;
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +127,67 @@ for (const tc of flagResolutionCases) {
   });
 }
 
+Deno.test("flag resolution > disabled flag returns default value with DISABLED reason", async () => {
+  const { pglite, pool, provider } = await setup();
+  try {
+    await pool.query(`
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled)
+      VALUES ('disabled-flag', 'boolean', false)
+    `);
+    await pool.query(`
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
+      VALUES ('disabled-flag', 'on', 'boolean', 'true')
+    `);
+
+    await provider.initialize();
+
+    const result = await provider.resolveBooleanEvaluation(
+      "disabled-flag",
+      false,
+      {},
+      logger,
+    );
+    assertStrictEquals(result.value, false); // default value, not stored value
+    assertStrictEquals(result.reason, StandardResolutionReasons.DISABLED);
+  } finally {
+    await provider.onClose();
+    await pool.end();
+    await pglite.close();
+  }
+});
+
+Deno.test("flag resolution > resolves multiple flags simultaneously", async () => {
+  const { pglite, pool, provider } = await setup();
+  try {
+    await pool.query(`
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('flag-a', 'boolean'), ('flag-b', 'string')
+    `);
+    await pool.query(`
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
+      VALUES ('flag-a', 'on', 'boolean', 'true'),
+             ('flag-b', 'hello', 'string', '"world"')
+    `);
+
+    await provider.initialize();
+
+    const a = await provider.resolveBooleanEvaluation(
+      "flag-a",
+      false,
+      {},
+      logger,
+    );
+    assertStrictEquals(a.value, true);
+
+    const b = await provider.resolveStringEvaluation("flag-b", "", {}, logger);
+    assertStrictEquals(b.value, "world");
+  } finally {
+    await provider.onClose();
+    await pool.end();
+    await pglite.close();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Error handling
 // ---------------------------------------------------------------------------
@@ -159,35 +234,6 @@ for (const enabled of [true, false]) {
     }
   });
 }
-
-Deno.test("flag resolution > disabled flag returns default value with DISABLED reason", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled)
-      VALUES ('disabled-flag', 'boolean', false)
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('disabled-flag', 'on', 'boolean', 'true')
-    `);
-
-    await provider.initialize();
-
-    const result = await provider.resolveBooleanEvaluation(
-      "disabled-flag",
-      false,
-      {},
-      logger,
-    );
-    assertStrictEquals(result.value, false); // default value, not stored value
-    assertStrictEquals(result.reason, StandardResolutionReasons.DISABLED);
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
 
 // ---------------------------------------------------------------------------
 // Rollouts
@@ -317,8 +363,8 @@ Deno.test("rollouts > normalizes percentages > 100 proportionally", async () => 
       counts[r.variant ?? ""]++;
     }
 
-    // With SHA-256 and 200 users both variants should appear and neither should
-    // dominate (within a generous ±30% tolerance around 50%).
+    // Both variants should appear and neither should dominate
+    // (within a generous ±30% tolerance around 50%).
     assert(
       counts.a >= 70 && counts.a <= 130,
       `Expected a ≈ 100/200, got ${counts.a}`,
@@ -449,42 +495,6 @@ Deno.test("initialize > initialize after onClose is a no-op", async () => {
   }
 });
 
-Deno.test("initialize > resolves multiple flags simultaneously", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('flag-a', 'boolean'), ('flag-b', 'string')
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value)
-      VALUES ('flag-a', 'on', 'boolean', 'true'),
-             ('flag-b', 'hello', 'string', '"world"')
-    `);
-
-    await provider.initialize();
-
-    const a = await provider.resolveBooleanEvaluation(
-      "flag-a",
-      false,
-      {},
-      logger,
-    );
-    assertStrictEquals(a.value, true);
-
-    const b = await provider.resolveStringEvaluation("flag-b", "", {}, logger);
-    assertStrictEquals(b.value, "world");
-  } finally {
-    await provider.onClose();
-    await pool.end();
-    await pglite.close();
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Rollout edge cases
-// ---------------------------------------------------------------------------
-
 Deno.test("rollouts > 100% rollout never falls through to default", async () => {
   const { pglite, pool, provider } = await setup();
   try {
@@ -535,17 +545,7 @@ Deno.test("background sync > reconnects after connection loss", async () => {
     VALUES ('test-flag', 'on', 'boolean', 'true')
   `);
 
-  // Capture the listener's internal client via a pool.connect wrapper
-  let listenerClient:
-    | { emit: (event: string, ...args: unknown[]) => void }
-    | null = null;
-  const origConnect = pool.connect.bind(pool);
-  // deno-lint-ignore no-explicit-any
-  (pool as any).connect = async () => {
-    const c = await origConnect();
-    listenerClient = c;
-    return c;
-  };
+  const getListenerClient = interceptListenerClient(pool);
 
   const provider = new PostgresProvider({ pool });
   await provider.initialize();
@@ -555,7 +555,7 @@ Deno.test("background sync > reconnects after connection loss", async () => {
   });
 
   // Simulate connection loss
-  listenerClient!.emit("error", new Error("simulated disconnect"));
+  getListenerClient().emit("error", new Error("simulated disconnect"));
 
   // Should emit Stale
   await stale;
@@ -582,22 +582,13 @@ Deno.test("background sync > dispose during reconnection does not throw", async 
   const pool = createPool(pglite);
   await pglite.exec(migration);
 
-  let listenerClient:
-    | { emit: (event: string, ...args: unknown[]) => void }
-    | null = null;
-  const origConnect = pool.connect.bind(pool);
-  // deno-lint-ignore no-explicit-any
-  (pool as any).connect = async () => {
-    const c = await origConnect();
-    listenerClient = c;
-    return c;
-  };
+  const getListenerClient = interceptListenerClient(pool);
 
   const provider = new PostgresProvider({ pool });
   await provider.initialize();
 
   // Simulate connection loss to enter reconnecting state
-  listenerClient!.emit("error", new Error("simulated disconnect"));
+  getListenerClient().emit("error", new Error("simulated disconnect"));
 
   // Immediately close while reconnection is in-flight
   await provider.onClose();
