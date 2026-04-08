@@ -46,7 +46,7 @@ export class PostgresProvider implements Provider {
   private lastResultJson = "";
   private readonly pool: pg.Pool;
   private readonly schema: string;
-  private stopListener: (() => void) | null = null;
+  private stopListener: () => void = () => {};
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
 
@@ -88,7 +88,7 @@ export class PostgresProvider implements Provider {
 
     this.debouncedSync.clear();
     if (this.syncInterval) clearInterval(this.syncInterval);
-    this.stopListener?.();
+    this.stopListener();
   }
 
   async resolveBooleanEvaluation(
