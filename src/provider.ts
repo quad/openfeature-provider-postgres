@@ -97,12 +97,7 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<boolean>> {
-    return await this.resolve<boolean>(
-      flagKey,
-      defaultValue,
-      "boolean",
-      context,
-    );
+    return await this.resolve(flagKey, defaultValue, "boolean", context);
   }
 
   async resolveStringEvaluation(
@@ -111,7 +106,7 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<string>> {
-    return await this.resolve<string>(flagKey, defaultValue, "string", context);
+    return await this.resolve(flagKey, defaultValue, "string", context);
   }
 
   async resolveNumberEvaluation(
@@ -120,7 +115,7 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<number>> {
-    return await this.resolve<number>(flagKey, defaultValue, "number", context);
+    return await this.resolve(flagKey, defaultValue, "number", context);
   }
 
   async resolveObjectEvaluation<T extends JsonValue>(
@@ -129,7 +124,7 @@ export class PostgresProvider implements Provider {
     context: EvaluationContext,
     _logger: Logger,
   ): Promise<ResolutionDetails<T>> {
-    return await this.resolve<T>(flagKey, defaultValue, "object", context);
+    return await this.resolve(flagKey, defaultValue, "object", context);
   }
 
   private async resolve<T>(
