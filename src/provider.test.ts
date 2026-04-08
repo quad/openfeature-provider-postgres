@@ -4,7 +4,6 @@ import {
   assertRejects,
   assertStrictEquals,
 } from "jsr:@std/assert@1";
-import { describe, it } from "@std/testing/bdd";
 import {
   DefaultLogger,
   FlagNotFoundError,
@@ -12,6 +11,7 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
+import { describe, it } from "@std/testing/bdd";
 import type pg from "pg";
 import { insertFlag, withDb } from "./pglite-helper.test.ts";
 import { PostgresProvider } from "./provider.ts";

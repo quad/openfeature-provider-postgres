@@ -31,9 +31,10 @@ export async function insertFlag(
   );
   for (const v of variants) {
     await pool.query(
-      `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage) VALUES ('${key}', '${v.name}', '${type}', '${v.value}', ${
-        v.percentage ?? "NULL"
-      })`,
+      `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage) ` +
+        `VALUES('${key}', '${v.name}', '${type}', '${v.value}', ${
+          v.percentage ?? "NULL"
+        })`,
     );
   }
 }

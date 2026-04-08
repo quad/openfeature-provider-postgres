@@ -1,7 +1,7 @@
 import { assertStrictEquals } from "jsr:@std/assert@1";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
-import { PostgresProvider } from "./provider.ts";
 import { insertFlag, withDb } from "./pglite-helper.test.ts";
+import { PostgresProvider } from "./provider.ts";
 
 Deno.test("end-to-end flag change via NOTIFY", () =>
   withDb(async (pool) => {
