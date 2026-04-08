@@ -15,7 +15,6 @@ CREATE TABLE openfeature.flag_variants (
     variant text NOT NULL,
     flag_type text NOT NULL,
     value jsonb NOT NULL,
-    -- NULL = default/fallback variant, 0-100 = rollout participant.
     percentage integer CHECK (percentage IS NULL OR percentage BETWEEN 0 AND 100),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
@@ -23,6 +22,9 @@ CREATE TABLE openfeature.flag_variants (
     PRIMARY KEY (flag_key, variant),
     FOREIGN KEY (flag_key, flag_type) REFERENCES openfeature.feature_flags (flag_key, flag_type)
 );
+
+COMMENT ON COLUMN openfeature.flag_variants.percentage
+    IS 'NULL = default/fallback variant, 0-100 = rollout participant';
 
 CREATE UNIQUE INDEX one_default_per_flag ON openfeature.flag_variants (flag_key)
 WHERE
