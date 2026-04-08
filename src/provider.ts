@@ -218,7 +218,6 @@ export class PostgresProvider implements Provider {
         ff.enabled,
         fv.variant,
         fv.value,
-        fv.is_default,
         fv.percentage
       FROM ${s}.feature_flags ff
       JOIN ${s}.flag_variants fv USING (flag_key, flag_type)
@@ -242,11 +241,9 @@ export class PostgresProvider implements Provider {
 
       flag.variants.set(row.variant, row.value);
 
-      if (row.is_default === true) {
+      if (row.percentage == null) {
         flag.defaultVariant = row.variant;
-      }
-
-      if (row.percentage != null) {
+      } else {
         flag.rollout ||= [];
         flag.rollout.push({
           variant: row.variant,

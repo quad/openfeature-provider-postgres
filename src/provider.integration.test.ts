@@ -21,9 +21,9 @@ Deno.test("Integration: initialize → insert → ConfigurationChanged → evalu
     VALUES ('my-flag', 'boolean')
   `);
   await pool.query(`
-    INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, is_default)
-    VALUES ('my-flag', 'on',  'boolean', 'true',  true),
-           ('my-flag', 'off', 'boolean', 'false', NULL)
+    INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage)
+    VALUES ('my-flag', 'on',  'boolean', 'true',  NULL),
+           ('my-flag', 'off', 'boolean', 'false', 100)
   `);
 
   const provider = new PostgresProvider({
@@ -46,7 +46,7 @@ Deno.test("Integration: initialize → insert → ConfigurationChanged → evalu
   // Swap the default to 'off' — triggers NOTIFY via UPDATE trigger
   await pool.query(`
     UPDATE openfeature.flag_variants
-    SET is_default = CASE WHEN variant = 'off' THEN true ELSE NULL END
+    SET percentage = CASE WHEN variant = 'off' THEN NULL ELSE 100 END
     WHERE flag_key = 'my-flag'
   `);
 

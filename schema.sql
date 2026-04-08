@@ -1,37 +1,36 @@
 CREATE SCHEMA openfeature;
 
--- Flag definitions
 CREATE TABLE openfeature.feature_flags (
     flag_key        TEXT PRIMARY KEY,
     flag_type       TEXT NOT NULL CHECK (flag_type IN ('boolean', 'string', 'number', 'object')),
     enabled         BOOLEAN NOT NULL DEFAULT true,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Supports the compound FK from flag_variants, ensuring type consistency.
     UNIQUE (flag_key, flag_type)
 );
 
--- Typed variants (type safety via jsonb_typeof CHECK)
--- is_default: NULL = not the default, TRUE = the default variant for this flag.
--- UNIQUE (flag_key, is_default) enforces at-most-one default per flag: NULLs are
--- considered distinct in PostgreSQL unique indexes, so many NULL rows are allowed,
--- but only one TRUE per flag_key.
 CREATE TABLE openfeature.flag_variants (
     flag_key   TEXT NOT NULL,
     variant    TEXT NOT NULL,
     flag_type  TEXT NOT NULL,
     value      JSONB NOT NULL,
-    is_default BOOLEAN CHECK (is_default IS NULL OR is_default),
+    -- NULL = default/fallback variant, 0-100 = rollout participant.
     percentage INTEGER CHECK (percentage IS NULL OR percentage BETWEEN 0 AND 100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Ensures variant values match the flag's declared type.
     CHECK (jsonb_typeof(value) = flag_type),
-    CHECK (is_default IS NULL OR percentage IS NULL),
     PRIMARY KEY (flag_key, variant),
-    UNIQUE (flag_key, is_default),
     FOREIGN KEY (flag_key, flag_type) REFERENCES openfeature.feature_flags(flag_key, flag_type)
 );
 
--- Notify on any flag change
+-- Each flag may have at most one default variant (percentage IS NULL).
+CREATE UNIQUE INDEX one_default_per_flag
+    ON openfeature.flag_variants (flag_key)
+    WHERE percentage IS NULL;
+
+-- Emit NOTIFY on any flag data change so the provider can refresh its cache.
 CREATE FUNCTION openfeature.notify_flag_change() RETURNS TRIGGER AS $$
 BEGIN
     NOTIFY flag_change;
