@@ -1,7 +1,12 @@
 CREATE SCHEMA openfeature;
 
 -- Must match FlagData.flagType in provider.ts.
-CREATE TYPE openfeature.flag_type AS ENUM ('boolean', 'string', 'number', 'object');
+CREATE TYPE openfeature.flag_type AS ENUM (
+    'boolean',
+    'string',
+    'number',
+    'object'
+);
 
 CREATE TABLE openfeature.feature_flags (
     flag_key varchar(255) PRIMARY KEY CHECK (flag_key <> ''),
@@ -26,8 +31,7 @@ CREATE TABLE openfeature.flag_variants (
     FOREIGN KEY (flag_key, flag_type) REFERENCES openfeature.feature_flags (flag_key, flag_type)
 );
 
-COMMENT ON COLUMN openfeature.flag_variants.percentage
-    IS 'NULL = default/fallback variant, 0-100 = rollout participant';
+COMMENT ON COLUMN openfeature.flag_variants.percentage IS 'NULL = default/fallback variant, 0-100 = rollout participant';
 
 CREATE UNIQUE INDEX one_default_per_flag ON openfeature.flag_variants (flag_key)
 WHERE
