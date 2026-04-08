@@ -76,10 +76,12 @@ export class PostgresProvider implements Provider {
       () => this.events.emit(ProviderEvents.Stale),
     );
 
-    this.syncInterval = setInterval(this.debouncedSync, SYNC_INTERVAL_MS).unref();
+    this.syncInterval = setInterval(this.debouncedSync, SYNC_INTERVAL_MS)
+      .unref();
     this.state = "ready";
   }
 
+  // deno-lint-ignore require-await
   async onClose(): Promise<void> {
     if (this.state !== "ready") return;
     this.state = "disposed";
@@ -156,7 +158,11 @@ export class PostgresProvider implements Provider {
     let reason: string;
 
     if (flag.rollout && context.targetingKey) {
-      chosenVariant = await this.pickRolloutVariant(flagKey, flag, context.targetingKey);
+      chosenVariant = await this.pickRolloutVariant(
+        flagKey,
+        flag,
+        context.targetingKey,
+      );
       reason = StandardResolutionReasons.SPLIT;
     } else {
       chosenVariant = flag.defaultVariant;
@@ -286,7 +292,9 @@ async function startNotifyListener(
     state = "reconnecting";
     client.release(true);
     onConnectionLost();
-    backOff(async () => { client = await connect(); }, {
+    backOff(async () => {
+      client = await connect();
+    }, {
       numOfAttempts: Infinity,
       maxDelay: RECONNECT_MAX_DELAY_MS,
       jitter: "full",
@@ -306,4 +314,3 @@ async function startNotifyListener(
     if (shouldRelease) client.release(true);
   };
 }
-

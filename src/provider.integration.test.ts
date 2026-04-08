@@ -1,10 +1,7 @@
 import { assertStrictEquals } from "jsr:@std/assert@1";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
 import { PostgresProvider } from "./provider.ts";
-import {
-  createPgLite,
-  createPool,
-} from "./pglite-helper.test.ts";
+import { createPgLite, createPool } from "./pglite-helper.test.ts";
 
 const migration = Deno.readTextFileSync(
   new URL("../schema.sql", import.meta.url),
@@ -28,7 +25,6 @@ Deno.test("Integration: initialize → insert → ConfigurationChanged → evalu
 
   const provider = new PostgresProvider({
     pool,
-
   });
 
   await OpenFeature.setProviderAndWait("test", provider);
@@ -70,7 +66,6 @@ Deno.test("Integration: onClose cleanup is idempotent", async () => {
 
   const provider = new PostgresProvider({
     pool,
-
   });
 
   await provider.initialize();

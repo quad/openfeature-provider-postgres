@@ -10,11 +10,7 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
-import {
-  createPgLite,
-  createPool,
-  logger,
-} from "./pglite-helper.test.ts";
+import { createPgLite, createPool, logger } from "./pglite-helper.test.ts";
 import { PostgresProvider } from "./provider.ts";
 
 const migration = Deno.readTextFileSync(
@@ -28,7 +24,6 @@ async function setup() {
 
   const provider = new PostgresProvider({
     pool,
-
   });
 
   return { pglite, pool, provider };
@@ -509,7 +504,6 @@ Deno.test("background sync > emits Stale when a notification-triggered sync fail
 
   const provider = new PostgresProvider({
     pool: wrappedPool,
-
   });
 
   await provider.initialize();
@@ -544,7 +538,6 @@ Deno.test("background sync > does not emit ConfigurationChanged when nothing cha
 
   const provider = new PostgresProvider({
     pool,
-
   });
 
   await provider.initialize();
