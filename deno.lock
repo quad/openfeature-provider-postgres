@@ -11,7 +11,6 @@
     "npm:@openfeature/server-sdk@^1.13.0": "1.20.2_@openfeature+core@1.9.2",
     "npm:@types/node@*": "22.15.15",
     "npm:exponential-backoff@^3.1.2": "3.1.3",
-    "npm:fast-check@3": "3.23.2",
     "npm:murmurhash3js@*": "3.0.1",
     "npm:pg@^8.13.0": "8.20.0",
     "npm:xxh32@*": "2.0.5",
@@ -113,12 +112,6 @@
     "exponential-backoff@3.1.3": {
       "integrity": "sha512-ZgEeZXj30q+I0EN+CbSSpIyPaJ5HVQD18Z1m+u1FXbAeT94mr1zw50q4q6jiiC447Nl/YTcIYSAftiGqetwXCA=="
     },
-    "fast-check@3.23.2": {
-      "integrity": "sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==",
-      "dependencies": [
-        "pure-rand"
-      ]
-    },
     "murmurhash3js@3.0.1": {
       "integrity": "sha512-KL8QYUaxq7kUbcl0Yto51rMcYt7E/4N4BG3/c96Iqw1PQrTRspu8Cpx4TZ4Nunib1d4bEkIH3gjCYlP2RLBdow=="
     },
@@ -184,9 +177,6 @@
         "xtend"
       ]
     },
-    "pure-rand@6.1.0": {
-      "integrity": "sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA=="
-    },
     "split2@4.2.0": {
       "integrity": "sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg=="
     },
@@ -207,7 +197,6 @@
       "npm:@middle-management/pglite-pg-adapter@^0.0.4",
       "npm:@openfeature/server-sdk@^1.13.0",
       "npm:exponential-backoff@^3.1.2",
-      "npm:fast-check@3",
       "npm:pg@^8.13.0",
       "npm:xxh32@^2.0.5"
     ]

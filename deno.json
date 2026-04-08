@@ -19,7 +19,7 @@
   },
   "imports": {
     "@electric-sql/pglite": "npm:@electric-sql/pglite@^0.3.0",
-    "fast-check": "npm:fast-check@^3",
+
     "@middle-management/pglite-pg-adapter": "npm:@middle-management/pglite-pg-adapter@^0.0.4",
     "@openfeature/server-sdk": "npm:@openfeature/server-sdk@^1.13.0",
     "@std/async": "jsr:@std/async@^1",

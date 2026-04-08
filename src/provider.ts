@@ -185,7 +185,24 @@ export class PostgresProvider implements Provider {
     flag: FlagData,
     targetingKey: string,
   ): string {
-    return pickRolloutVariant(flagKey, flag, targetingKey);
+    const hash = xxh32(`${targetingKey}\0${flagKey}`);
+
+    // When percentages sum to ≤ 100, unallocated traffic falls through to the
+    // default variant. When > 100 (misconfiguration), the actual total is used
+    // as divisor, giving proportional normalization — e.g. 70/70 → 50/50.
+    const rollout = flag.rollout ?? [];
+    const total = rollout.reduce((sum, r) => sum + r.percentage, 0);
+    const bucket = hash % Math.max(total, 100);
+
+    let cumulative = 0;
+    for (const entry of rollout) {
+      cumulative += entry.percentage;
+      if (bucket < cumulative) {
+        return entry.variant;
+      }
+    }
+
+    return flag.defaultVariant;
   }
 
   private async syncCache(): Promise<boolean> {
@@ -234,32 +251,6 @@ export class PostgresProvider implements Provider {
     this.cache = grouped;
     return true;
   }
-}
-
-/** @internal Exported for property testing. */
-export function pickRolloutVariant(
-  flagKey: string,
-  flag: FlagData,
-  targetingKey: string,
-): string {
-  const hash = xxh32(`${targetingKey}\0${flagKey}`);
-
-  // When percentages sum to ≤ 100, unallocated traffic falls through to the
-  // default variant. When > 100 (misconfiguration), the actual total is used
-  // as divisor, giving proportional normalization — e.g. 70/70 → 50/50.
-  const rollout = flag.rollout ?? [];
-  const total = rollout.reduce((sum, r) => sum + r.percentage, 0);
-  const bucket = hash % Math.max(total, 100);
-
-  let cumulative = 0;
-  for (const entry of rollout) {
-    cumulative += entry.percentage;
-    if (bucket < cumulative) {
-      return entry.variant;
-    }
-  }
-
-  return flag.defaultVariant;
 }
 
 function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
