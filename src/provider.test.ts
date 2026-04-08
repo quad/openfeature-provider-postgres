@@ -380,6 +380,38 @@ Deno.test("rollouts > normalizes percentages > 100 proportionally", async () => 
   }
 });
 
+Deno.test("rollouts > 100% rollout never falls through to default", async () => {
+  const { pglite, pool, provider } = await setup();
+  try {
+    await pool.query(`
+      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
+      VALUES ('full-rollout', 'string')
+    `);
+    await pool.query(`
+      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage)
+      VALUES ('full-rollout', 'default', 'string', '"Default"', NULL),
+             ('full-rollout', 'treatment', 'string', '"Treatment"', 100)
+    `);
+
+    await provider.initialize();
+
+    // With 100% rollout, every targeting key should get 'treatment'
+    for (let i = 0; i < 50; i++) {
+      const result = await provider.resolveStringEvaluation(
+        "full-rollout",
+        "",
+        { targetingKey: `user-${i}` },
+        logger,
+      );
+      assertStrictEquals(result.variant, "treatment");
+    }
+  } finally {
+    await provider.onClose();
+    await pool.end();
+    await pglite.close();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // DB constraint enforcement
 // ---------------------------------------------------------------------------
@@ -490,38 +522,6 @@ Deno.test("initialize > initialize after onClose is a no-op", async () => {
     await provider.onClose();
     await provider.initialize(); // should not re-initialize after dispose
   } finally {
-    await pool.end();
-    await pglite.close();
-  }
-});
-
-Deno.test("rollouts > 100% rollout never falls through to default", async () => {
-  const { pglite, pool, provider } = await setup();
-  try {
-    await pool.query(`
-      INSERT INTO openfeature.feature_flags (flag_key, flag_type)
-      VALUES ('full-rollout', 'string')
-    `);
-    await pool.query(`
-      INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage)
-      VALUES ('full-rollout', 'default', 'string', '"Default"', NULL),
-             ('full-rollout', 'treatment', 'string', '"Treatment"', 100)
-    `);
-
-    await provider.initialize();
-
-    // With 100% rollout, every targeting key should get 'treatment'
-    for (let i = 0; i < 50; i++) {
-      const result = await provider.resolveStringEvaluation(
-        "full-rollout",
-        "",
-        { targetingKey: `user-${i}` },
-        logger,
-      );
-      assertStrictEquals(result.variant, "treatment");
-    }
-  } finally {
-    await provider.onClose();
     await pool.end();
     await pglite.close();
   }
