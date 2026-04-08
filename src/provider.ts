@@ -45,6 +45,7 @@ export class PostgresProvider implements Provider {
   events: OpenFeatureEventEmitter = new OpenFeatureEventEmitter();
 
   private cache = new Map<string, FlagData>();
+  private evaluatedKeys = new Set<string>();
   private lastResultJson = "";
   private readonly pool: pg.Pool;
   private readonly schema: string;
@@ -78,8 +79,10 @@ export class PostgresProvider implements Provider {
       () => this.events.emit(ProviderEvents.Stale),
     );
 
-    this.syncInterval = setInterval(this.debouncedSync, SYNC_INTERVAL_MS)
-      .unref();
+    this.syncInterval = setInterval(() => {
+      this.debouncedSync();
+      this.flushEvaluations().catch(() => {});
+    }, SYNC_INTERVAL_MS).unref();
     this.state = "ready";
   }
 
@@ -147,6 +150,8 @@ export class PostgresProvider implements Provider {
         `Flag "${flagKey}" is type "${flag.flagType}", requested "${expectedType}"`,
       );
     }
+
+    this.evaluatedKeys.add(flagKey);
 
     if (!flag.enabled) {
       return {
@@ -250,6 +255,19 @@ export class PostgresProvider implements Provider {
 
     this.cache = grouped;
     return true;
+  }
+
+  private async flushEvaluations(): Promise<void> {
+    if (this.evaluatedKeys.size === 0) return;
+    const keys = [...this.evaluatedKeys];
+    this.evaluatedKeys.clear();
+    const s = pg.escapeIdentifier(this.schema);
+    await this.pool.query(
+      `INSERT INTO ${s}.flag_evaluations (flag_key)
+       SELECT unnest($1::text[])
+       ON CONFLICT (flag_key) DO UPDATE SET last_evaluated_at = now()`,
+      [keys],
+    );
   }
 }
 

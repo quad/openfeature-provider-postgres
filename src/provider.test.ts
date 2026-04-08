@@ -1,6 +1,7 @@
 import {
   assert,
   assertEquals,
+  assertGreater,
   assertRejects,
   assertStrictEquals,
 } from "jsr:@std/assert@1";
@@ -12,6 +13,7 @@ import {
   TypeMismatchError,
 } from "@openfeature/server-sdk";
 import { describe, it } from "@std/testing/bdd";
+import { delay } from "@std/async/delay";
 import type pg from "pg";
 import { insertFlag, withDb } from "./pglite-helper.test.ts";
 import { PostgresProvider } from "./provider.ts";
@@ -512,5 +514,105 @@ describe("sync", () => {
         0,
         "should not fire when cache is unchanged",
       );
+    }));
+});
+
+// deno-lint-ignore no-explicit-any -- accessing private method for testing
+const flush = (p: PostgresProvider) => (p as any).flushEvaluations();
+
+describe("evaluation tracking", () => {
+  it("writes last_evaluated_at for resolved flags", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "tracked", "boolean", [
+        { name: "on", value: "true" },
+      ]);
+      await provider.initialize();
+
+      await provider.resolveBooleanEvaluation("tracked", false, {}, logger);
+      await flush(provider);
+
+      const { rows } = await pool.query(
+        "SELECT flag_key, last_evaluated_at FROM openfeature.flag_evaluations",
+      );
+      assertStrictEquals(rows.length, 1);
+      assertStrictEquals(rows[0].flag_key, "tracked");
+      assert(rows[0].last_evaluated_at instanceof Date);
+    }));
+
+  it("batches multiple flags in one flush", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "flag-a", "boolean", [
+        { name: "on", value: "true" },
+      ]);
+      await insertFlag(pool, "flag-b", "string", [
+        { name: "hi", value: '"hi"' },
+      ]);
+      await provider.initialize();
+
+      await provider.resolveBooleanEvaluation("flag-a", false, {}, logger);
+      await provider.resolveStringEvaluation("flag-b", "", {}, logger);
+      await flush(provider);
+
+      const { rows } = await pool.query(
+        "SELECT flag_key FROM openfeature.flag_evaluations ORDER BY flag_key",
+      );
+      assertEquals(rows.map((r: { flag_key: string }) => r.flag_key), [
+        "flag-a",
+        "flag-b",
+      ]);
+    }));
+
+  it("updates timestamp on repeated evaluation", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "repeat", "boolean", [
+        { name: "on", value: "true" },
+      ]);
+      await provider.initialize();
+
+      await provider.resolveBooleanEvaluation("repeat", false, {}, logger);
+      await flush(provider);
+
+      const first = (await pool.query(
+        "SELECT last_evaluated_at FROM openfeature.flag_evaluations WHERE flag_key = 'repeat'",
+      )).rows[0].last_evaluated_at;
+
+      await delay(10);
+
+      await provider.resolveBooleanEvaluation("repeat", false, {}, logger);
+      await flush(provider);
+
+      const second = (await pool.query(
+        "SELECT last_evaluated_at FROM openfeature.flag_evaluations WHERE flag_key = 'repeat'",
+      )).rows[0].last_evaluated_at;
+
+      assertGreater(second, first);
+    }));
+
+  it("tracks disabled flag evaluations", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "off-flag", "boolean", [
+        { name: "on", value: "true" },
+      ], false);
+      await provider.initialize();
+
+      await provider.resolveBooleanEvaluation("off-flag", false, {}, logger);
+      await flush(provider);
+
+      const { rows } = await pool.query(
+        "SELECT flag_key FROM openfeature.flag_evaluations",
+      );
+      assertStrictEquals(rows.length, 1);
+      assertStrictEquals(rows[0].flag_key, "off-flag");
+    }));
+
+  it("no-ops when no flags were evaluated", () =>
+    withProvider(async (pool, provider) => {
+      await provider.initialize();
+      await flush(provider);
+
+      const { rows } = await pool.query(
+        "SELECT count(*) as n FROM openfeature.flag_evaluations",
+      );
+      assertStrictEquals(Number(rows[0].n), 0);
     }));
 });
