@@ -160,11 +160,7 @@ for (const enabled of [true, false]) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Disabled flags
-// ---------------------------------------------------------------------------
-
-Deno.test("disabled flags > returns default value with DISABLED reason", async () => {
+Deno.test("flag resolution > disabled flag returns default value with DISABLED reason", async () => {
   const { pglite, pool, provider } = await setup();
   try {
     await pool.query(`
