@@ -403,34 +403,34 @@ describe("sync", () => {
 
       const getListenerClient = interceptListenerClient(pool);
 
-      const provider = new PostgresProvider({ pool });
-      try {
-        await provider.initialize();
+      await using stack = new AsyncDisposableStack();
+      const provider = stack.adopt(
+        new PostgresProvider({ pool }),
+        (p) => p.onClose(),
+      );
+      await provider.initialize();
 
-        const stale = new Promise<void>((resolve) => {
-          provider.events.addHandler(ProviderEvents.Stale, () => resolve());
-        });
+      const stale = new Promise<void>((resolve) => {
+        provider.events.addHandler(ProviderEvents.Stale, () => resolve());
+      });
 
-        // Simulate connection loss
-        getListenerClient().emit("error", new Error("simulated disconnect"));
+      // Simulate connection loss
+      getListenerClient().emit("error", new Error("simulated disconnect"));
 
-        // Should emit Stale
-        await stale;
+      // Should emit Stale
+      await stale;
 
-        // Wait for backoff to reconnect and sync
-        await new Promise((r) => setTimeout(r, 500));
+      // Wait for backoff to reconnect and sync
+      await new Promise((r) => setTimeout(r, 500));
 
-        // Provider should still work after reconnection
-        const result = await provider.resolveBooleanEvaluation(
-          "test-flag",
-          false,
-          {},
-          logger,
-        );
-        assertStrictEquals(result.value, true);
-      } finally {
-        await provider.onClose();
-      }
+      // Provider should still work after reconnection
+      const result = await provider.resolveBooleanEvaluation(
+        "test-flag",
+        false,
+        {},
+        logger,
+      );
+      assertStrictEquals(result.value, true);
     }));
 
   it("dispose during reconnection", () =>
@@ -459,24 +459,21 @@ describe("sync", () => {
         },
       } as unknown as typeof pool; // partial mock — only implements connect/query
 
-      const provider = new PostgresProvider({
-        pool: wrappedPool,
+      await using stack = new AsyncDisposableStack();
+      const provider = stack.adopt(
+        new PostgresProvider({ pool: wrappedPool }),
+        (p) => p.onClose(),
+      );
+      await provider.initialize();
+      failQueries = true;
+
+      const stale = new Promise<void>((resolve) => {
+        provider.events.addHandler(ProviderEvents.Stale, () => resolve());
       });
 
-      try {
-        await provider.initialize();
-        failQueries = true;
-
-        const stale = new Promise<void>((resolve) => {
-          provider.events.addHandler(ProviderEvents.Stale, () => resolve());
-        });
-
-        // Trigger onNotification path via a direct NOTIFY
-        await pool.query("NOTIFY openfeature_flag_change");
-        await stale;
-      } finally {
-        await provider.onClose();
-      }
+      // Trigger onNotification path via a direct NOTIFY
+      await pool.query("NOTIFY openfeature_flag_change");
+      await stale;
     }));
 
   it("skips ConfigurationChanged when unchanged", () =>
@@ -485,30 +482,27 @@ describe("sync", () => {
         { name: "on", value: "true" },
       ]);
 
-      const provider = new PostgresProvider({
-        pool,
+      await using stack = new AsyncDisposableStack();
+      const provider = stack.adopt(
+        new PostgresProvider({ pool }),
+        (p) => p.onClose(),
+      );
+      await provider.initialize();
+
+      let changeCount = 0;
+      provider.events.addHandler(ProviderEvents.ConfigurationChanged, () => {
+        changeCount++;
       });
 
-      try {
-        await provider.initialize();
+      // Trigger a sync via NOTIFY without changing any data — cache is identical,
+      // so ConfigurationChanged must not fire.
+      await pool.query("NOTIFY openfeature_flag_change");
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
-        let changeCount = 0;
-        provider.events.addHandler(ProviderEvents.ConfigurationChanged, () => {
-          changeCount++;
-        });
-
-        // Trigger a sync via NOTIFY without changing any data — cache is identical,
-        // so ConfigurationChanged must not fire.
-        await pool.query("NOTIFY openfeature_flag_change");
-        await new Promise((resolve) => setTimeout(resolve, 200));
-
-        assertStrictEquals(
-          changeCount,
-          0,
-          "should not fire when cache is unchanged",
-        );
-      } finally {
-        await provider.onClose();
-      }
+      assertStrictEquals(
+        changeCount,
+        0,
+        "should not fire when cache is unchanged",
+      );
     }));
 });
