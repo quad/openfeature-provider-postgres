@@ -47,8 +47,9 @@ export async function startNotifyListener(
 
   return {
     [Symbol.dispose]() {
+      const wasListening = state === "listening";
       state = "stopped";
-      client.release(true);
+      if (wasListening) client.release(true);
     },
   };
 }
