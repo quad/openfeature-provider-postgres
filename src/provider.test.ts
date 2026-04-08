@@ -505,7 +505,7 @@ describe("sync", () => {
       // Trigger a sync via NOTIFY without changing any data — cache is identical,
       // so ConfigurationChanged must not fire.
       await pool.query("NOTIFY openfeature_flag_change");
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150)); // 1.5× DEBOUNCE_MS
 
       assertStrictEquals(
         changeCount,
