@@ -86,7 +86,6 @@ export class PostgresProvider implements Provider {
     await this.stopListener();
     this.abort.abort();
     await this.syncLoopDone;
-    await this.flushEvaluations();
   }
 
   private async runSyncLoop(): Promise<void> {
@@ -118,6 +117,8 @@ export class PostgresProvider implements Provider {
         this.flushEvaluations();
       }
     }
+
+    await this.flushEvaluations();
   }
 
   // deno-lint-ignore require-await -- Provider interface requires Promise return
