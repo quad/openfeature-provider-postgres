@@ -35,7 +35,7 @@ Deno.test("end-to-end flag change via NOTIFY", () =>
     `);
     await pool.query("COMMIT");
 
-    await deadline(changed, 1_000);
+    await deadline(changed, 2_000);
 
     // Evaluate updated value (only 'off' has weight → false)
     const updated = await client.getBooleanValue("my-flag", true);

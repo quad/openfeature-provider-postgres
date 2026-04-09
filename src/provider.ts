@@ -13,7 +13,6 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
-import { debounce } from "@std/async/debounce";
 import { backOff } from "exponential-backoff";
 import pg from "pg";
 import { xxh32 } from "xxh32";
@@ -32,7 +31,7 @@ export interface PostgresProviderOptions {
 const DEFAULT_SCHEMA = "openfeature";
 const CHANNEL = "openfeature_flag_change";
 const SYNC_INTERVAL_MS = 300_000;
-const DEBOUNCE_MS = 100;
+const NOTIFY_JITTER_MS = 500;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 
 /**
@@ -56,13 +55,15 @@ export class PostgresProvider implements Provider {
   private stopListener: () => Promise<void> = () => Promise.resolve();
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
 
-  private readonly debouncedSync = debounce(() => {
+  private readonly syncAndEmit = () => {
     this.syncCache().then((changed) => {
       if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
     }).catch(() => {
       this.events.emit(ProviderEvents.Stale);
     });
-  }, DEBOUNCE_MS);
+  };
+
+  private readonly notifySync = jitteredDebounce(this.syncAndEmit, NOTIFY_JITTER_MS);
 
   constructor(options: PostgresProviderOptions) {
     this.pool = options.pool;
@@ -77,14 +78,14 @@ export class PostgresProvider implements Provider {
     this.stopListener = await startNotifyListener(
       this.pool,
       CHANNEL,
-      this.debouncedSync,
-      this.debouncedSync,
+      this.notifySync,
+      this.syncAndEmit,
       () => this.events.emit(ProviderEvents.Stale),
     );
 
     const scheduleSync = () => {
       this.cancelSync = jitter(SYNC_INTERVAL_MS, () => {
-        this.debouncedSync();
+        this.syncAndEmit();
         this.flushEvaluations();
         scheduleSync();
       });
@@ -99,7 +100,7 @@ export class PostgresProvider implements Provider {
 
     await this.stopListener();
     this.cancelSync();
-    this.debouncedSync.clear();
+    this.notifySync.clear();
     await this.flushEvaluations();
   }
 
@@ -254,10 +255,29 @@ export class PostgresProvider implements Provider {
   }
 }
 
-/** Schedule fn after an exponentially-distributed delay. Returns a cancel function. */
+/**
+ * Like debounce, but with an exponentially-distributed delay (capped at 3× mean).
+ * Each call cancels the previous pending invocation.
+ */
+function jitteredDebounce(fn: () => void, mean: number) {
+  let t: ReturnType<typeof setTimeout> | null = null;
+  const debounced = () => {
+    if (t !== null) clearTimeout(t);
+    const delay = Math.min(-Math.log(Math.random()) * mean, mean * 3);
+    t = setTimeout(fn, delay).unref();
+  };
+  debounced.clear = () => {
+    if (t !== null) clearTimeout(t);
+    t = null;
+  };
+  return debounced;
+}
+
+/** One-shot jittered delay. Returns a cancel function. */
 function jitter(mean: number, fn: () => void): () => void {
-  const t = setTimeout(fn, -Math.log(Math.random()) * mean).unref();
-  return () => clearTimeout(t);
+  const d = jitteredDebounce(fn, mean);
+  d();
+  return d.clear;
 }
 
 function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {

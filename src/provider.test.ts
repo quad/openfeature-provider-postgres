@@ -527,7 +527,7 @@ describe("sync", () => {
 
       // Trigger onNotification path via a direct NOTIFY
       await pool.query("NOTIFY openfeature_flag_change");
-      await deadline(stale, 1_000);
+      await deadline(stale, 2_000);
     }));
 
   it("skips ConfigurationChanged when unchanged", () =>
@@ -551,7 +551,7 @@ describe("sync", () => {
       // Trigger a sync via NOTIFY without changing any data — cache is identical,
       // so ConfigurationChanged must not fire.
       await pool.query("NOTIFY openfeature_flag_change");
-      await new Promise((resolve) => setTimeout(resolve, 150)); // 1.5× DEBOUNCE_MS
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
 
       assertStrictEquals(
         changeCount,
