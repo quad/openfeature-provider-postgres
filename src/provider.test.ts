@@ -157,6 +157,24 @@ describe("flag resolution", () => {
       assertStrictEquals(result.variant, undefined);
     }));
 
+  it("disabled flag returns default even with wrong type", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "typed-disabled", "boolean", [
+        { name: "on", value: "true" },
+      ], { enabled: false });
+
+      await provider.initialize();
+
+      const result = await provider.resolveStringEvaluation(
+        "typed-disabled",
+        "fallback",
+        {},
+        logger,
+      );
+      assertStrictEquals(result.value, "fallback");
+      assertStrictEquals(result.reason, StandardResolutionReasons.DISABLED);
+    }));
+
   it("resolves multiple flags", () =>
     withProvider(async (pool, provider) => {
       await insertFlag(pool, "flag-a", "boolean", [
@@ -198,21 +216,19 @@ describe("error handling", () => {
       );
     }));
 
-  for (const enabled of [true, false]) {
-    it(`wrong type throws TypeMismatchError (enabled=${enabled})`, () =>
-      withProvider(async (pool, provider) => {
-        await insertFlag(pool, "bool-flag", "boolean", [
-          { name: "on", value: "true" },
-        ], { enabled });
+  it("wrong type throws TypeMismatchError", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "bool-flag", "boolean", [
+        { name: "on", value: "true" },
+      ]);
 
-        await provider.initialize();
+      await provider.initialize();
 
-        await assertRejects(
-          () => provider.resolveStringEvaluation("bool-flag", "", {}, logger),
-          TypeMismatchError,
-        );
-      }));
-  }
+      await assertRejects(
+        () => provider.resolveStringEvaluation("bool-flag", "", {}, logger),
+        TypeMismatchError,
+      );
+    }));
 });
 
 describe("rollouts", () => {
