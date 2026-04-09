@@ -1,4 +1,4 @@
-import { clearInterval, setInterval } from "node:timers";
+import { clearTimeout, setTimeout } from "node:timers";
 import type {
   EvaluationContext,
   JsonValue,
@@ -46,7 +46,7 @@ export class PostgresProvider implements Provider {
   private readonly pool: pg.Pool;
   private readonly schema: string;
   private stopListener: () => Promise<void> = () => Promise.resolve();
-  private syncInterval: ReturnType<typeof setInterval> | null = null;
+  private syncTimeout: ReturnType<typeof setTimeout> | null = null;
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
 
   private readonly debouncedSync = debounce(() => {
@@ -75,10 +75,14 @@ export class PostgresProvider implements Provider {
       () => this.events.emit(ProviderEvents.Stale),
     );
 
-    this.syncInterval = setInterval(() => {
-      this.debouncedSync();
-      this.flushEvaluations().catch(() => {});
-    }, SYNC_INTERVAL_MS).unref();
+    const scheduleSync = () => {
+      this.syncTimeout = setTimeout(() => {
+        this.debouncedSync();
+        this.flushEvaluations().catch(() => {});
+        scheduleSync();
+      }, Math.random() * SYNC_INTERVAL_MS).unref();
+    };
+    scheduleSync();
     this.state = "ready";
   }
 
@@ -87,7 +91,7 @@ export class PostgresProvider implements Provider {
     this.state = "disposed";
 
     await this.stopListener();
-    if (this.syncInterval) clearInterval(this.syncInterval);
+    if (this.syncTimeout) clearTimeout(this.syncTimeout);
     this.debouncedSync.clear();
     await this.flushEvaluations().catch(() => {});
   }
