@@ -31,7 +31,7 @@ export interface PostgresProviderOptions {
 const DEFAULT_SCHEMA = "openfeature";
 const CHANNEL = "openfeature_flag_change";
 const PERIODIC_SYNC_MS = 300_000;
-const NOTIFY_JITTER_MS = 500;
+const NOTIFY_SYNC_MS = 500;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 
 /**
@@ -63,7 +63,7 @@ export class PostgresProvider implements Provider {
     });
   };
 
-  private readonly notifySync = jitteredDebounce(this.syncAndEmit, NOTIFY_JITTER_MS);
+  private readonly notifySync = jitteredDebounce(this.syncAndEmit, NOTIFY_SYNC_MS);
 
   constructor(options: PostgresProviderOptions) {
     this.pool = options.pool;
