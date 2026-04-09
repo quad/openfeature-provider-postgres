@@ -195,10 +195,10 @@ export class PostgresProvider implements Provider {
   private async syncCache(): Promise<boolean> {
     const s = pg.escapeIdentifier(this.schema);
     const result = await this.pool.query(`
-      SELECT ff.flag_key, ff.flag_type, ff.enabled, fv.id, fv.variant, fv.value, fv.weight
-      FROM ${s}.flags ff
+      SELECT f.flag_key, f.flag_type, f.enabled, fv.id, fv.variant, fv.value, fv.weight
+      FROM ${s}.flags f
       JOIN ${s}.flag_variants fv USING (flag_key, flag_type)
-      ORDER BY ff.flag_key, fv.variant
+      ORDER BY f.flag_key, fv.variant
     `);
 
     const resultJson = JSON.stringify(result.rows);
@@ -231,9 +231,9 @@ export class PostgresProvider implements Provider {
     this.evaluatedVariantIds.clear();
     const s = pg.escapeIdentifier(this.schema);
     await this.pool.query(
-      `INSERT INTO ${s}.flag_evaluations (flag_variant_id)
+      `INSERT INTO ${s}.flag_evaluations AS fe (flag_variant_id)
        SELECT unnest($1::int[])
-       ON CONFLICT (flag_variant_id) DO UPDATE SET last_evaluated_at = GREATEST(flag_evaluations.last_evaluated_at, now())`,
+       ON CONFLICT (flag_variant_id) DO UPDATE SET last_evaluated_at = GREATEST(fe.last_evaluated_at, now())`,
       [ids],
     );
   }
