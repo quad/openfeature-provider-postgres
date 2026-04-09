@@ -25,12 +25,12 @@ async function withProvider(
   fn: (pool: pg.Pool, provider: PostgresProvider) => Promise<void>,
 ) {
   await withDb(async (pool) => {
-    await using stack = new AsyncDisposableStack();
-    const provider = stack.adopt(
-      new PostgresProvider({ pool }),
-      (p) => p.onClose(),
-    );
-    await fn(pool, provider);
+    const provider = new PostgresProvider({ pool });
+    try {
+      await fn(pool, provider);
+    } finally {
+      await provider.onClose();
+    }
   });
 }
 
