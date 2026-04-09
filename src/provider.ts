@@ -187,16 +187,9 @@ export class PostgresProvider implements Provider {
   private async syncCache(): Promise<boolean> {
     const s = pg.escapeIdentifier(this.schema);
     const result = await this.pool.query(`
-      SELECT
-        ff.flag_key,
-        ff.flag_type,
-        fv.id,
-        fv.variant,
-        fv.value,
-        fv.weight
-      FROM ${s}.flags ff
-      JOIN ${s}.flag_variants fv USING (flag_key, flag_type)
-      ORDER BY ff.flag_key, fv.variant
+      SELECT flag_key, flag_type, id, variant, value, weight
+      FROM ${s}.flag_variants
+      ORDER BY flag_key, variant
     `);
 
     const resultJson = JSON.stringify(result.rows);
