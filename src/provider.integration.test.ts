@@ -1,4 +1,5 @@
 import { assertStrictEquals } from "jsr:@std/assert@1";
+import { deadline } from "@std/async/deadline";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
 import { insertFlag, withDb } from "./pglite-helper.test.ts";
 import { PostgresProvider } from "./provider.ts";
@@ -33,8 +34,7 @@ Deno.test("end-to-end flag change via NOTIFY", () =>
       UPDATE openfeature.flag_variants SET percentage = NULL WHERE flag_key = 'my-flag' AND variant = 'off'
     `);
 
-    // Wait for the ConfigurationChanged event
-    await changed;
+    await deadline(changed, 1_000);
 
     // Evaluate updated value (default variant is now 'off' → false)
     const updated = await client.getBooleanValue("my-flag", true);

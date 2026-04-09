@@ -13,6 +13,7 @@ import {
   TypeMismatchError,
 } from "@openfeature/server-sdk";
 import { describe, it } from "@std/testing/bdd";
+import { deadline } from "@std/async/deadline";
 import { delay } from "@std/async/delay";
 import type pg from "pg";
 import { insertFlag, withDb } from "./pglite-helper.test.ts";
@@ -418,7 +419,7 @@ describe("sync", () => {
 
       // Simulate connection loss
       getListenerClient().emit("error", new Error("simulated disconnect"));
-      await stale;
+      await deadline(stale, 1_000);
 
       // Insert a new flag while disconnected — after reconnect, the sync will
       // see the change and emit ConfigurationChanged, which we await.
@@ -431,7 +432,7 @@ describe("sync", () => {
           () => resolve(),
         );
       });
-      await changed;
+      await deadline(changed, 1_000);
 
       // Provider should work after reconnection
       const result = await provider.resolveBooleanEvaluation(
@@ -483,7 +484,7 @@ describe("sync", () => {
 
       // Trigger onNotification path via a direct NOTIFY
       await pool.query("NOTIFY openfeature_flag_change");
-      await stale;
+      await deadline(stale, 1_000);
     }));
 
   it("skips ConfigurationChanged when unchanged", () =>
