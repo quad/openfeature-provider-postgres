@@ -138,6 +138,25 @@ describe("flag resolution", () => {
       assertStrictEquals(result.reason, StandardResolutionReasons.DISABLED);
     }));
 
+  it("enabled=false returns default value preserving variant weights", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "kill-switched", "boolean", [
+        { name: "on", value: "true" },
+      ], { enabled: false });
+
+      await provider.initialize();
+
+      const result = await provider.resolveBooleanEvaluation(
+        "kill-switched",
+        false,
+        { targetingKey: "user-1" },
+        logger,
+      );
+      assertStrictEquals(result.value, false);
+      assertStrictEquals(result.reason, StandardResolutionReasons.DISABLED);
+      assertStrictEquals(result.variant, undefined);
+    }));
+
   it("resolves multiple flags", () =>
     withProvider(async (pool, provider) => {
       await insertFlag(pool, "flag-a", "boolean", [
@@ -179,19 +198,21 @@ describe("error handling", () => {
       );
     }));
 
-  it("wrong type throws TypeMismatchError", () =>
-    withProvider(async (pool, provider) => {
-      await insertFlag(pool, "bool-flag", "boolean", [
-        { name: "on", value: "true" },
-      ]);
+  for (const enabled of [true, false]) {
+    it(`wrong type throws TypeMismatchError (enabled=${enabled})`, () =>
+      withProvider(async (pool, provider) => {
+        await insertFlag(pool, "bool-flag", "boolean", [
+          { name: "on", value: "true" },
+        ], { enabled });
 
-      await provider.initialize();
+        await provider.initialize();
 
-      await assertRejects(
-        () => provider.resolveStringEvaluation("bool-flag", "", {}, logger),
-        TypeMismatchError,
-      );
-    }));
+        await assertRejects(
+          () => provider.resolveStringEvaluation("bool-flag", "", {}, logger),
+          TypeMismatchError,
+        );
+      }));
+  }
 });
 
 describe("rollouts", () => {
@@ -583,7 +604,7 @@ describe("evaluation tracking", () => {
       assertGreater(second, first);
     }));
 
-  it("tracks zero-weight flag evaluations as disabled", () =>
+  it("does not track disabled flag evaluations (zero-weight)", () =>
     withDb(async (pool) => {
       await insertFlag(pool, "off-flag", "boolean", [
         { name: "on", value: "true", weight: 0 },
@@ -594,7 +615,23 @@ describe("evaluation tracking", () => {
       await provider.resolveBooleanEvaluation("off-flag", false, {}, logger);
       await provider.onClose();
 
-      // Disabled flags (all-zero-weight) don't pick a variant, so no eval record
+      const { rows } = await pool.query(
+        "SELECT count(*) as n FROM openfeature.flag_evaluations",
+      );
+      assertStrictEquals(Number(rows[0].n), 0);
+    }));
+
+  it("does not track disabled flag evaluations (enabled=false)", () =>
+    withDb(async (pool) => {
+      await insertFlag(pool, "off-flag", "boolean", [
+        { name: "on", value: "true" },
+      ], { enabled: false });
+
+      const provider = new PostgresProvider({ pool });
+      await provider.initialize();
+      await provider.resolveBooleanEvaluation("off-flag", false, {}, logger);
+      await provider.onClose();
+
       const { rows } = await pool.query(
         "SELECT count(*) as n FROM openfeature.flag_evaluations",
       );
