@@ -1,4 +1,3 @@
-import { clearTimeout, setTimeout } from "node:timers";
 import type {
   EvaluationContext,
   JsonValue,
@@ -13,6 +12,7 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
+import { delay } from "@std/async/delay";
 import { backOff } from "exponential-backoff";
 import pg from "pg";
 import { xxh32 } from "xxh32";
@@ -51,19 +51,11 @@ export class PostgresProvider implements Provider {
   private lastResultHash = NaN;
   private readonly pool: pg.Pool;
   private readonly schema: string;
-  private cancelPeriodicSync: () => void = () => {};
+  private abort = new AbortController();
+  private syncSignal = createSignal<SyncReason>();
   private stopListener: () => Promise<void> = () => Promise.resolve();
+  private syncLoopDone: Promise<void> = Promise.resolve();
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
-
-  private readonly syncAndEmit = () => {
-    this.syncCache().then((changed) => {
-      if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
-    }).catch(() => {
-      this.events.emit(ProviderEvents.Stale);
-    });
-  };
-
-  private readonly notifySync = jitteredDebounce(this.syncAndEmit, NOTIFY_SYNC_MS);
 
   constructor(options: PostgresProviderOptions) {
     this.pool = options.pool;
@@ -78,19 +70,13 @@ export class PostgresProvider implements Provider {
     this.stopListener = await startNotifyListener(
       this.pool,
       CHANNEL,
-      this.notifySync,
-      this.syncAndEmit,
+      () => this.syncSignal.fire("notify"),
+      () => this.syncSignal.fire("reconnect"),
       () => this.events.emit(ProviderEvents.Stale),
     );
 
-    const syncTimer = jitteredDebounce(() => {
-      this.syncAndEmit();
-      this.flushEvaluations();
-      syncTimer();
-    }, PERIODIC_SYNC_MS);
-    this.cancelPeriodicSync = syncTimer.clear;
-    syncTimer();
     this.state = "ready";
+    this.syncLoopDone = this.runSyncLoop();
   }
 
   async onClose(): Promise<void> {
@@ -98,9 +84,40 @@ export class PostgresProvider implements Provider {
     this.state = "disposed";
 
     await this.stopListener();
-    this.cancelPeriodicSync();
-    this.notifySync.clear();
+    this.abort.abort();
+    await this.syncLoopDone;
     await this.flushEvaluations();
+  }
+
+  private async runSyncLoop(): Promise<void> {
+    const { signal } = this.abort;
+    const sleep = (ms: number) =>
+      delay(ms, { signal, persistent: false }).catch(() => {});
+
+    while (this.state === "ready") {
+      const reason = await Promise.race([
+        sleep(jitter(PERIODIC_SYNC_MS)).then(() => "periodic" as const),
+        this.syncSignal.promise,
+      ]);
+      this.syncSignal.reset();
+      if (this.state !== "ready") break;
+
+      if (reason === "notify") {
+        await sleep(jitter(NOTIFY_SYNC_MS));
+        if (this.state !== "ready") break;
+      }
+
+      try {
+        const changed = await this.syncCache();
+        if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
+      } catch {
+        this.events.emit(ProviderEvents.Stale);
+      }
+
+      if (reason === "periodic") {
+        this.flushEvaluations();
+      }
+    }
   }
 
   // deno-lint-ignore require-await -- Provider interface requires Promise return
@@ -254,24 +271,12 @@ export class PostgresProvider implements Provider {
   }
 }
 
-/**
- * Like debounce, but with an exponentially-distributed delay (capped at 3× mean).
- * Each call cancels the previous pending invocation.
- */
-function jitteredDebounce(fn: () => void, mean: number) {
-  let t: ReturnType<typeof setTimeout> | null = null;
-  const debounced = () => {
-    if (t !== null) clearTimeout(t);
-    const delay = Math.min(-Math.log(Math.random()) * mean, mean * 3);
-    t = setTimeout(fn, delay).unref();
-  };
-  debounced.clear = () => {
-    if (t !== null) clearTimeout(t);
-    t = null;
-  };
-  return debounced;
-}
+type SyncReason = "notify" | "reconnect" | "periodic";
 
+/** Exponential random variate, capped at 3× mean. */
+function jitter(mean: number): number {
+  return Math.min(-Math.log(Math.random()) * mean, mean * 3);
+}
 
 function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
   let val = map.get(key);
@@ -282,15 +287,21 @@ function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
   return val;
 }
 
-function createSignal() {
-  const { resolve, promise } = Promise.withResolvers<void>();
+function createSignal<T = void>() {
+  let resolve: (value: T) => void;
+  let promise = new Promise<T>((r) => resolve = r);
   return {
     fired: false,
-    fire() {
-      this.fired = true;
-      resolve();
-    },
     promise,
+    fire(value: T) {
+      this.fired = true;
+      resolve(value);
+    },
+    reset() {
+      this.fired = false;
+      promise = new Promise<T>((r) => resolve = r);
+      this.promise = promise;
+    },
   };
 }
 
