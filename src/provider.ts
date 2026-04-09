@@ -42,7 +42,7 @@ export class PostgresProvider implements Provider {
 
   private cache = new Map<string, FlagData>();
   private evaluatedVariantIds = new Set<number>();
-  private lastResultJson = "";
+  private lastResultHash = NaN;
   private readonly pool: pg.Pool;
   private readonly schema: string;
   private stopListener: () => Promise<void> = () => Promise.resolve();
@@ -205,9 +205,9 @@ export class PostgresProvider implements Provider {
       ORDER BY f.flag_key, fv.variant
     `);
 
-    const resultJson = JSON.stringify(result.rows);
-    if (resultJson === this.lastResultJson) return false;
-    this.lastResultJson = resultJson;
+    const resultHash = xxh32(JSON.stringify(result.rows));
+    if (resultHash === this.lastResultHash) return false;
+    this.lastResultHash = resultHash;
 
     const grouped = new Map<string, FlagData>();
 
