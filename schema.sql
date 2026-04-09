@@ -23,7 +23,7 @@ CREATE TABLE openfeature.flag_variants (
     variant varchar(255) NOT NULL CHECK (variant <> ''),
     flag_type openfeature.flag_type NOT NULL,
     value jsonb NOT NULL,
-    weight integer NOT NULL DEFAULT 1 CHECK (weight >= 0),
+    weight integer NOT NULL CHECK (weight >= 0),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CHECK (jsonb_typeof(value) = flag_type::text),
