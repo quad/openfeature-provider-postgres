@@ -11,7 +11,7 @@ CREATE TYPE openfeature.flag_type AS ENUM (
 CREATE TABLE openfeature.feature_flags (
     flag_key varchar(255) PRIMARY KEY CHECK (flag_key <> ''),
     flag_type openfeature.flag_type NOT NULL,
-    enabled boolean NOT NULL DEFAULT TRUE,
+    enabled boolean NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     -- Required by the compound FK from flag_variants.
