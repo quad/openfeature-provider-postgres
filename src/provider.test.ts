@@ -387,10 +387,10 @@ describe("schema constraints", () => {
     it(tc.name, () =>
       withDb(async (pool) => {
         for (const sql of tc.setupSql) await pool.query(sql);
-        const err = await assertRejects(() => pool.query(tc.badSql), Error);
-        assert(
-          (err as Error).message.toLowerCase().includes(tc.expectedError),
-          `Expected error containing "${tc.expectedError}", got: ${(err as Error).message}`,
+        await assertRejects(
+          () => pool.query(tc.badSql),
+          Error,
+          tc.expectedError,
         );
       }));
   }
