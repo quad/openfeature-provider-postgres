@@ -45,8 +45,8 @@ export class PostgresProvider implements Provider {
   private lastResultHash = NaN;
   private readonly pool: pg.Pool;
   private readonly schema: string;
+  private cancelSync: () => void = () => {};
   private stopListener: () => Promise<void> = () => Promise.resolve();
-  private syncTimeout: ReturnType<typeof setTimeout> | null = null;
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
 
   private readonly debouncedSync = debounce(() => {
@@ -76,11 +76,11 @@ export class PostgresProvider implements Provider {
     );
 
     const scheduleSync = () => {
-      this.syncTimeout = setTimeout(() => {
+      this.cancelSync = jitter(SYNC_INTERVAL_MS, () => {
         this.debouncedSync();
         this.flushEvaluations();
         scheduleSync();
-      }, Math.random() * SYNC_INTERVAL_MS).unref();
+      });
     };
     scheduleSync();
     this.state = "ready";
@@ -91,7 +91,7 @@ export class PostgresProvider implements Provider {
     this.state = "disposed";
 
     await this.stopListener();
-    if (this.syncTimeout) clearTimeout(this.syncTimeout);
+    this.cancelSync();
     this.debouncedSync.clear();
     await this.flushEvaluations();
   }
@@ -245,6 +245,12 @@ export class PostgresProvider implements Provider {
       for (const id of ids) this.evaluatedVariantIds.add(id);
     }
   }
+}
+
+/** Schedule fn after an exponentially-distributed delay. Returns a cancel function. */
+function jitter(mean: number, fn: () => void): () => void {
+  const t = setTimeout(fn, -Math.log(Math.random()) * mean).unref();
+  return () => clearTimeout(t);
 }
 
 function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
