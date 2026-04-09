@@ -35,6 +35,13 @@ const SYNC_INTERVAL_MS = 300_000;
 const DEBOUNCE_MS = 100;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 
+/**
+ * PostgreSQL-backed OpenFeature provider.
+ *
+ * Flags are cached in memory and refreshed via `LISTEN`/`NOTIFY` with a
+ * periodic full sync as a fallback. Each instance holds one dedicated
+ * connection from the pool for `LISTEN`.
+ */
 export class PostgresProvider implements Provider {
   readonly metadata = { name: "openfeature-provider-postgres" };
   readonly runsOn = "server" as const;
