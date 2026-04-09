@@ -78,7 +78,7 @@ export class PostgresProvider implements Provider {
     const scheduleSync = () => {
       this.syncTimeout = setTimeout(() => {
         this.debouncedSync();
-        this.flushEvaluations().catch(() => {});
+        this.flushEvaluations();
         scheduleSync();
       }, Math.random() * SYNC_INTERVAL_MS).unref();
     };
@@ -93,7 +93,7 @@ export class PostgresProvider implements Provider {
     await this.stopListener();
     if (this.syncTimeout) clearTimeout(this.syncTimeout);
     this.debouncedSync.clear();
-    await this.flushEvaluations().catch(() => {});
+    await this.flushEvaluations();
   }
 
   // deno-lint-ignore require-await -- Provider interface requires Promise return
@@ -234,12 +234,16 @@ export class PostgresProvider implements Provider {
     const ids = [...this.evaluatedVariantIds];
     this.evaluatedVariantIds.clear();
     const s = pg.escapeIdentifier(this.schema);
-    await this.pool.query(
-      `INSERT INTO ${s}.flag_evaluations AS fe (flag_variant_id)
-       SELECT unnest($1::int[])
-       ON CONFLICT (flag_variant_id) DO UPDATE SET last_evaluated_at = GREATEST(fe.last_evaluated_at, now())`,
-      [ids],
-    );
+    try {
+      await this.pool.query(
+        `INSERT INTO ${s}.flag_evaluations AS fe (flag_variant_id)
+         SELECT unnest($1::int[])
+         ON CONFLICT (flag_variant_id) DO UPDATE SET last_evaluated_at = GREATEST(fe.last_evaluated_at, now())`,
+        [ids],
+      );
+    } catch {
+      for (const id of ids) this.evaluatedVariantIds.add(id);
+    }
   }
 }
 
