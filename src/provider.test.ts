@@ -345,6 +345,7 @@ describe("schema constraints", () => {
       ],
       badSql:
         `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('bool-flag', 'on', 'boolean', '"not-a-boolean"')`,
+      expectedError: "check",
     },
     {
       name: "rejects JSONB arrays for object-type variants",
@@ -353,12 +354,14 @@ describe("schema constraints", () => {
       ],
       badSql:
         `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('tags', 'default', 'object', '["a", "b", "c"]')`,
+      expectedError: "check",
     },
     {
       name: "rejects empty flag_key",
       setupSql: [],
       badSql:
         `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('', 'boolean', true)`,
+      expectedError: "check",
     },
     {
       name: "rejects empty variant",
@@ -367,6 +370,7 @@ describe("schema constraints", () => {
       ],
       badSql:
         `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', '', 'boolean', 'true')`,
+      expectedError: "check",
     },
     {
       name: "rejects negative weight",
@@ -375,6 +379,7 @@ describe("schema constraints", () => {
       ],
       badSql:
         `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, weight) VALUES ('my-flag', 'on', 'boolean', 'true', -1)`,
+      expectedError: "check",
     },
   ];
 
@@ -382,7 +387,11 @@ describe("schema constraints", () => {
     it(tc.name, () =>
       withDb(async (pool) => {
         for (const sql of tc.setupSql) await pool.query(sql);
-        await assertRejects(() => pool.query(tc.badSql), Error);
+        const err = await assertRejects(() => pool.query(tc.badSql), Error);
+        assert(
+          (err as Error).message.toLowerCase().includes(tc.expectedError),
+          `Expected error containing "${tc.expectedError}", got: ${(err as Error).message}`,
+        );
       }));
   }
 });
