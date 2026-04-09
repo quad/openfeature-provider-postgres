@@ -54,7 +54,7 @@ export class PostgresProvider implements Provider {
   private abort = new AbortController();
   private syncSignal = createSignal<SyncReason>();
   private stopListener: () => Promise<void> = () => Promise.resolve();
-  private syncLoopDone: Promise<void> = Promise.resolve();
+  private done: Promise<void> = Promise.resolve();
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
 
   constructor(options: PostgresProviderOptions) {
@@ -76,7 +76,7 @@ export class PostgresProvider implements Provider {
     );
 
     this.state = "ready";
-    this.syncLoopDone = this.runSyncLoop();
+    this.done = this.lifecycle();
   }
 
   async onClose(): Promise<void> {
@@ -85,10 +85,10 @@ export class PostgresProvider implements Provider {
 
     await this.stopListener();
     this.abort.abort();
-    await this.syncLoopDone;
+    await this.done;
   }
 
-  private async runSyncLoop(): Promise<void> {
+  private async lifecycle(): Promise<void> {
     const { signal } = this.abort;
     const sleep = (ms: number) =>
       delay(ms, { signal, persistent: false }).catch(() => {});
@@ -106,12 +106,14 @@ export class PostgresProvider implements Provider {
         if (this.state !== "ready") break;
       }
 
+      let changed: boolean;
       try {
-        const changed = await this.syncCache();
-        if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
+        changed = await this.syncCache();
       } catch {
         this.events.emit(ProviderEvents.Stale);
+        continue;
       }
+      if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
 
       if (reason === "periodic") {
         this.flushEvaluations();
