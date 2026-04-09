@@ -8,7 +8,7 @@ CREATE TYPE openfeature.flag_type AS ENUM (
     'object'
 );
 
-CREATE TABLE openfeature.feature_flags (
+CREATE TABLE openfeature.flags (
     flag_key varchar(255) PRIMARY KEY CHECK (flag_key <> ''),
     flag_type openfeature.flag_type NOT NULL,
     enabled boolean NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE openfeature.flag_variants (
     updated_at timestamptz NOT NULL DEFAULT now(),
     CHECK (jsonb_typeof(value) = flag_type::text),
     PRIMARY KEY (flag_key, variant),
-    FOREIGN KEY (flag_key, flag_type) REFERENCES openfeature.feature_flags (flag_key, flag_type)
+    FOREIGN KEY (flag_key, flag_type) REFERENCES openfeature.flags (flag_key, flag_type)
 );
 
 COMMENT ON COLUMN openfeature.flag_variants.percentage IS 'NULL = default/fallback variant, 0-100 = rollout participant';
@@ -39,7 +39,7 @@ WHERE
 
 CREATE TABLE openfeature.flag_evaluations (
     flag_key varchar(255) PRIMARY KEY
-        REFERENCES openfeature.feature_flags (flag_key) ON DELETE CASCADE,
+        REFERENCES openfeature.flags (flag_key) ON DELETE CASCADE,
     last_evaluated_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -54,8 +54,8 @@ END;
 $$
 LANGUAGE plpgsql;
 
-CREATE TRIGGER feature_flags_set_updated_at
-    BEFORE UPDATE ON openfeature.feature_flags
+CREATE TRIGGER flags_set_updated_at
+    BEFORE UPDATE ON openfeature.flags
     FOR EACH ROW
     EXECUTE FUNCTION openfeature.set_updated_at ();
 
@@ -75,8 +75,8 @@ END;
 $$
 LANGUAGE plpgsql;
 
-CREATE TRIGGER feature_flags_notify
-    AFTER INSERT OR UPDATE OR DELETE ON openfeature.feature_flags
+CREATE TRIGGER flags_notify
+    AFTER INSERT OR UPDATE OR DELETE ON openfeature.flags
     FOR EACH STATEMENT
     EXECUTE FUNCTION openfeature.notify_flag_change ();
 

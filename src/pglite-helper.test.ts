@@ -30,7 +30,7 @@ export async function insertFlag(
   enabled = true,
 ) {
   await pool.query(
-    "INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled) VALUES ($1, $2, $3)",
+    "INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ($1, $2, $3)",
     [key, type, enabled],
   );
   for (const v of variants) {

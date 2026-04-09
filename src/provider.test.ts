@@ -322,7 +322,7 @@ describe("schema constraints", () => {
     {
       name: "rejects wrong-typed JSONB values",
       setupSql: [
-        `INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled) VALUES ('bool-flag', 'boolean', true)`,
+        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('bool-flag', 'boolean', true)`,
       ],
       badSql:
         `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('bool-flag', 'on', 'boolean', '"not-a-boolean"')`,
@@ -330,7 +330,7 @@ describe("schema constraints", () => {
     {
       name: "rejects JSONB arrays for object-type variants",
       setupSql: [
-        `INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled) VALUES ('tags', 'object', true)`,
+        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('tags', 'object', true)`,
       ],
       badSql:
         `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('tags', 'default', 'object', '["a", "b", "c"]')`,
@@ -338,7 +338,7 @@ describe("schema constraints", () => {
     {
       name: "rejects a second default variant for the same flag",
       setupSql: [
-        `INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'boolean', true)`,
+        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'boolean', true)`,
         `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', 'on', 'boolean', 'true')`,
       ],
       badSql:
@@ -348,12 +348,12 @@ describe("schema constraints", () => {
       name: "rejects empty flag_key",
       setupSql: [],
       badSql:
-        `INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled) VALUES ('', 'boolean', true)`,
+        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('', 'boolean', true)`,
     },
     {
       name: "rejects empty variant",
       setupSql: [
-        `INSERT INTO openfeature.feature_flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'boolean', true)`,
+        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'boolean', true)`,
       ],
       badSql:
         `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', '', 'boolean', 'true')`,

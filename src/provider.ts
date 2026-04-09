@@ -220,7 +220,7 @@ export class PostgresProvider implements Provider {
         fv.variant,
         fv.value,
         fv.percentage
-      FROM ${s}.feature_flags ff
+      FROM ${s}.flags ff
       JOIN ${s}.flag_variants fv USING (flag_key, flag_type)
       ORDER BY ff.flag_key, fv.variant
     `);
