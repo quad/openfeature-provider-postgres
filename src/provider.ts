@@ -8,7 +8,6 @@ import type {
 } from "@openfeature/server-sdk";
 import {
   FlagNotFoundError,
-  GeneralError,
   OpenFeatureEventEmitter,
   ProviderEvents,
   StandardResolutionReasons,
@@ -20,12 +19,8 @@ import pg from "pg";
 import { xxh32 } from "xxh32";
 
 interface FlagData {
-  // Must match openfeature.flag_type enum in schema.sql.
   flagType: "boolean" | "string" | "number" | "object";
-  defaultVariant: string;
-  enabled: boolean;
-  variants: Map<string, unknown>;
-  rollout: { variant: string; percentage: number }[] | null;
+  variants: { id: number; variant: string; value: unknown; weight: number }[];
 }
 
 export interface PostgresProviderOptions {
@@ -45,7 +40,7 @@ export class PostgresProvider implements Provider {
   events: OpenFeatureEventEmitter = new OpenFeatureEventEmitter();
 
   private cache = new Map<string, FlagData>();
-  private evaluatedKeys = new Set<string>();
+  private evaluatedVariantIds = new Set<number>();
   private lastResultJson = "";
   private readonly pool: pg.Pool;
   private readonly schema: string;
@@ -151,63 +146,39 @@ export class PostgresProvider implements Provider {
       );
     }
 
-    this.evaluatedKeys.add(flagKey);
-
-    if (!flag.enabled) {
-      return {
-        value: defaultValue,
-        reason: StandardResolutionReasons.DISABLED,
-      };
+    const chosen = this.pickVariant(
+      flagKey,
+      flag,
+      context.targetingKey ?? flagKey,
+    );
+    if (!chosen) {
+      return { value: defaultValue, reason: StandardResolutionReasons.DISABLED };
     }
 
-    let chosenVariant: string;
-    let reason: string;
-
-    if (flag.rollout && context.targetingKey) {
-      chosenVariant = this.pickRolloutVariant(
-        flagKey,
-        flag,
-        context.targetingKey,
-      );
-      reason = StandardResolutionReasons.SPLIT;
-    } else {
-      chosenVariant = flag.defaultVariant;
-      reason = StandardResolutionReasons.STATIC;
-    }
-
-    const value = flag.variants.get(chosenVariant);
-    if (value === undefined) {
-      throw new GeneralError(
-        `Variant "${chosenVariant}" not found for flag "${flagKey}"`,
-      );
-    }
-
-    return { value: value as T, variant: chosenVariant, reason };
+    this.evaluatedVariantIds.add(chosen.id);
+    const reason = context.targetingKey
+      ? StandardResolutionReasons.SPLIT
+      : StandardResolutionReasons.STATIC;
+    return { value: chosen.value as T, variant: chosen.variant, reason };
   }
 
-  private pickRolloutVariant(
+  private pickVariant(
     flagKey: string,
     flag: FlagData,
     targetingKey: string,
-  ): string {
-    const hash = xxh32(`${targetingKey}\0${flagKey}`);
+  ): FlagData["variants"][number] | null {
+    const total = flag.variants.reduce((sum, v) => sum + v.weight, 0);
+    if (total === 0) return null;
 
-    // When percentages sum to ≤ 100, unallocated traffic falls through to the
-    // default variant. When > 100 (misconfiguration), the actual total is used
-    // as divisor, giving proportional normalization — e.g. 70/70 → 50/50.
-    const rollout = flag.rollout ?? [];
-    const total = rollout.reduce((sum, r) => sum + r.percentage, 0);
-    const bucket = hash % Math.max(total, 100);
+    const hash = xxh32(`${targetingKey}\0${flagKey}`);
+    const bucket = hash % total;
 
     let cumulative = 0;
-    for (const entry of rollout) {
-      cumulative += entry.percentage;
-      if (bucket < cumulative) {
-        return entry.variant;
-      }
+    for (const v of flag.variants) {
+      cumulative += v.weight;
+      if (bucket < cumulative) return v;
     }
-
-    return flag.defaultVariant;
+    return flag.variants[flag.variants.length - 1];
   }
 
   private async syncCache(): Promise<boolean> {
@@ -216,10 +187,10 @@ export class PostgresProvider implements Provider {
       SELECT
         ff.flag_key,
         ff.flag_type,
-        ff.enabled,
+        fv.id,
         fv.variant,
         fv.value,
-        fv.percentage
+        fv.weight
       FROM ${s}.flags ff
       JOIN ${s}.flag_variants fv USING (flag_key, flag_type)
       ORDER BY ff.flag_key, fv.variant
@@ -234,23 +205,14 @@ export class PostgresProvider implements Provider {
     for (const row of result.rows) {
       const flag = getOrInsertComputed(grouped, row.flag_key, () => ({
         flagType: row.flag_type,
-        defaultVariant: "",
-        enabled: row.enabled,
-        variants: new Map(),
-        rollout: null,
+        variants: [],
       }));
-
-      flag.variants.set(row.variant, row.value);
-
-      if (row.percentage == null) {
-        flag.defaultVariant = row.variant;
-      } else {
-        flag.rollout ||= [];
-        flag.rollout.push({
-          variant: row.variant,
-          percentage: row.percentage,
-        });
-      }
+      flag.variants.push({
+        id: row.id,
+        variant: row.variant,
+        value: row.value,
+        weight: row.weight,
+      });
     }
 
     this.cache = grouped;
@@ -258,15 +220,15 @@ export class PostgresProvider implements Provider {
   }
 
   private async flushEvaluations(): Promise<void> {
-    if (this.evaluatedKeys.size === 0) return;
-    const keys = [...this.evaluatedKeys];
-    this.evaluatedKeys.clear();
+    if (this.evaluatedVariantIds.size === 0) return;
+    const ids = [...this.evaluatedVariantIds];
+    this.evaluatedVariantIds.clear();
     const s = pg.escapeIdentifier(this.schema);
     await this.pool.query(
-      `INSERT INTO ${s}.flag_evaluations (flag_key)
-       SELECT unnest($1::text[])
-       ON CONFLICT (flag_key) DO UPDATE SET last_evaluated_at = now()`,
-      [keys],
+      `INSERT INTO ${s}.flag_evaluations (flag_variant_id)
+       SELECT unnest($1::int[])
+       ON CONFLICT (flag_variant_id) DO UPDATE SET last_evaluated_at = now()`,
+      [ids],
     );
   }
 }

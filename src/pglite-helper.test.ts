@@ -26,17 +26,16 @@ export async function insertFlag(
   pool: pg.Pool,
   key: string,
   type: string,
-  variants: { name: string; value: string; percentage?: number }[],
-  enabled = true,
+  variants: { name: string; value: string; weight?: number }[],
 ) {
   await pool.query(
-    "INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ($1, $2, $3)",
-    [key, type, enabled],
+    "INSERT INTO openfeature.flags (flag_key, flag_type) VALUES ($1, $2)",
+    [key, type],
   );
   for (const v of variants) {
     await pool.query(
-      "INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, percentage) VALUES ($1, $2, $3, $4, $5)",
-      [key, v.name, type, v.value, v.percentage ?? null],
+      "INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, weight) VALUES ($1, $2, $3, $4, $5)",
+      [key, v.name, type, v.value, v.weight ?? 100],
     );
   }
 }

@@ -7,15 +7,15 @@ import { PostgresProvider } from "./provider.ts";
 Deno.test("end-to-end flag change via NOTIFY", () =>
   withDb(async (pool) => {
     await insertFlag(pool, "my-flag", "boolean", [
-      { name: "on", value: "true" },
-      { name: "off", value: "false", percentage: 100 },
+      { name: "on", value: "true", weight: 1 },
+      { name: "off", value: "false", weight: 0 },
     ]);
 
     const provider = new PostgresProvider({ pool });
     await OpenFeature.setProviderAndWait("test", provider);
     const client = OpenFeature.getClient("test");
 
-    // Evaluate initial value (default variant is 'on' → true)
+    // Evaluate initial value (only 'on' has weight → true)
     const initial = await client.getBooleanValue("my-flag", false);
     assertStrictEquals(initial, true);
 
@@ -24,19 +24,20 @@ Deno.test("end-to-end flag change via NOTIFY", () =>
       client.addHandler(ProviderEvents.ConfigurationChanged, () => resolve());
     });
 
-    // Swap the default to 'off' — triggers NOTIFY via UPDATE trigger.
-    // Two statements: remove old default first, then set new one.
-    // A single CASE UPDATE violates the partial unique index mid-statement in PGlite.
+    // Swap weights in a single transaction so NOTIFY fires once
+    // and the provider never sees an intermediate state.
+    await pool.query("BEGIN");
     await pool.query(`
-      UPDATE openfeature.flag_variants SET percentage = 50 WHERE flag_key = 'my-flag' AND variant = 'on'
+      UPDATE openfeature.flag_variants SET weight = 0 WHERE flag_key = 'my-flag' AND variant = 'on'
     `);
     await pool.query(`
-      UPDATE openfeature.flag_variants SET percentage = NULL WHERE flag_key = 'my-flag' AND variant = 'off'
+      UPDATE openfeature.flag_variants SET weight = 1 WHERE flag_key = 'my-flag' AND variant = 'off'
     `);
+    await pool.query("COMMIT");
 
     await deadline(changed, 1_000);
 
-    // Evaluate updated value (default variant is now 'off' → false)
+    // Evaluate updated value (only 'off' has weight → false)
     const updated = await client.getBooleanValue("my-flag", true);
     assertStrictEquals(updated, false);
 

@@ -120,11 +120,11 @@ describe("flag resolution", () => {
       assertStrictEquals(result.variant, "v1");
     }));
 
-  it("disabled flag returns default", () =>
+  it("all-zero-weight flag returns default value", () =>
     withProvider(async (pool, provider) => {
       await insertFlag(pool, "disabled-flag", "boolean", [
-        { name: "on", value: "true" },
-      ], false);
+        { name: "on", value: "true", weight: 0 },
+      ]);
 
       await provider.initialize();
 
@@ -134,7 +134,7 @@ describe("flag resolution", () => {
         {},
         logger,
       );
-      assertStrictEquals(result.value, false); // default value, not stored value
+      assertStrictEquals(result.value, false);
       assertStrictEquals(result.reason, StandardResolutionReasons.DISABLED);
     }));
 
@@ -179,29 +179,27 @@ describe("error handling", () => {
       );
     }));
 
-  for (const enabled of [true, false]) {
-    it(`wrong type throws TypeMismatchError (enabled=${enabled})`, () =>
-      withProvider(async (pool, provider) => {
-        await insertFlag(pool, "bool-flag", "boolean", [
-          { name: "on", value: "true" },
-        ], enabled);
+  it("wrong type throws TypeMismatchError", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "bool-flag", "boolean", [
+        { name: "on", value: "true" },
+      ]);
 
-        await provider.initialize();
+      await provider.initialize();
 
-        await assertRejects(
-          () => provider.resolveStringEvaluation("bool-flag", "", {}, logger),
-          TypeMismatchError,
-        );
-      }));
-  }
+      await assertRejects(
+        () => provider.resolveStringEvaluation("bool-flag", "", {}, logger),
+        TypeMismatchError,
+      );
+    }));
 });
 
 describe("rollouts", () => {
   it("returns SPLIT reason with targeting key", () =>
     withProvider(async (pool, provider) => {
       await insertFlag(pool, "ab-test", "string", [
-        { name: "control", value: '"Control"' },
-        { name: "treatment", value: '"Treatment"', percentage: 50 },
+        { name: "control", value: '"Control"', weight: 50 },
+        { name: "treatment", value: '"Treatment"', weight: 50 },
       ]);
 
       await provider.initialize();
@@ -219,8 +217,8 @@ describe("rollouts", () => {
   it("is deterministic for the same targeting key", () =>
     withProvider(async (pool, provider) => {
       await insertFlag(pool, "ab-test", "string", [
-        { name: "control", value: '"Control"' },
-        { name: "treatment", value: '"Treatment"', percentage: 50 },
+        { name: "control", value: '"Control"', weight: 50 },
+        { name: "treatment", value: '"Treatment"', weight: 50 },
       ]);
 
       await provider.initialize();
@@ -238,11 +236,11 @@ describe("rollouts", () => {
       assertStrictEquals(results.size, 1, "should be deterministic");
     }));
 
-  it("falls back to default variant without targeting key", () =>
+  it("returns STATIC without targeting key", () =>
     withProvider(async (pool, provider) => {
       await insertFlag(pool, "ab-test", "string", [
-        { name: "control", value: '"Control"' },
-        { name: "treatment", value: '"Treatment"', percentage: 50 },
+        { name: "control", value: '"Control"', weight: 50 },
+        { name: "treatment", value: '"Treatment"', weight: 50 },
       ]);
 
       await provider.initialize();
@@ -253,20 +251,24 @@ describe("rollouts", () => {
         {},
         logger,
       );
-      assertStrictEquals(result.variant, "control");
       assertStrictEquals(result.reason, StandardResolutionReasons.STATIC);
+
+      // Deterministic: same flag key always resolves to the same variant
+      const again = await provider.resolveStringEvaluation(
+        "ab-test",
+        "",
+        {},
+        logger,
+      );
+      assertStrictEquals(result.variant, again.variant);
     }));
 
-  it("normalizes percentages exceeding 100", () => {
-    // 70 + 70 = 140 total. Math.max(140, 100) = 140 as bucket divisor.
-    // Buckets 0–69 → 'a' (50%), buckets 70–139 → 'b' (50%).
-    // This is the intended behaviour: treat percentages as weights when they
-    // overflow, so 70/70 means the same as 50/50.
+  it("normalizes weights proportionally", () => {
+    // 70 + 70 = 140 total → proportional split: 70/140 = 50% each.
     return withProvider(async (pool, provider) => {
       await insertFlag(pool, "split-test", "string", [
-        { name: "fallback", value: '"Fallback"' },
-        { name: "a", value: '"A"', percentage: 70 },
-        { name: "b", value: '"B"', percentage: 70 },
+        { name: "a", value: '"A"', weight: 70 },
+        { name: "b", value: '"B"', weight: 70 },
       ]);
 
       await provider.initialize();
@@ -282,8 +284,6 @@ describe("rollouts", () => {
         counts[r.variant ?? ""]++;
       }
 
-      // Both variants should appear and neither should dominate
-      // (within a generous ±30% tolerance around 50%).
       assert(
         counts.a >= 70 && counts.a <= 130,
         `Expected a ≈ 100/200, got ${counts.a}`,
@@ -295,16 +295,14 @@ describe("rollouts", () => {
     });
   });
 
-  it("100% rollout never falls through to default", () =>
+  it("single variant at weight 100 always resolves", () =>
     withProvider(async (pool, provider) => {
       await insertFlag(pool, "full-rollout", "string", [
-        { name: "default", value: '"Default"' },
-        { name: "treatment", value: '"Treatment"', percentage: 100 },
+        { name: "treatment", value: '"Treatment"' },
       ]);
 
       await provider.initialize();
 
-      // With 100% rollout, every targeting key should get 'treatment'
       for (let i = 0; i < 50; i++) {
         const result = await provider.resolveStringEvaluation(
           "full-rollout",
@@ -322,7 +320,7 @@ describe("schema constraints", () => {
     {
       name: "rejects wrong-typed JSONB values",
       setupSql: [
-        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('bool-flag', 'boolean', true)`,
+        `INSERT INTO openfeature.flags (flag_key, flag_type) VALUES ('bool-flag', 'boolean')`,
       ],
       badSql:
         `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('bool-flag', 'on', 'boolean', '"not-a-boolean"')`,
@@ -330,33 +328,32 @@ describe("schema constraints", () => {
     {
       name: "rejects JSONB arrays for object-type variants",
       setupSql: [
-        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('tags', 'object', true)`,
+        `INSERT INTO openfeature.flags (flag_key, flag_type) VALUES ('tags', 'object')`,
       ],
       badSql:
         `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('tags', 'default', 'object', '["a", "b", "c"]')`,
     },
     {
-      name: "rejects a second default variant for the same flag",
-      setupSql: [
-        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'boolean', true)`,
-        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', 'on', 'boolean', 'true')`,
-      ],
-      badSql:
-        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', 'off', 'boolean', 'false')`,
-    },
-    {
       name: "rejects empty flag_key",
       setupSql: [],
       badSql:
-        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('', 'boolean', true)`,
+        `INSERT INTO openfeature.flags (flag_key, flag_type) VALUES ('', 'boolean')`,
     },
     {
       name: "rejects empty variant",
       setupSql: [
-        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'boolean', true)`,
+        `INSERT INTO openfeature.flags (flag_key, flag_type) VALUES ('my-flag', 'boolean')`,
       ],
       badSql:
         `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', '', 'boolean', 'true')`,
+    },
+    {
+      name: "rejects negative weight",
+      setupSql: [
+        `INSERT INTO openfeature.flags (flag_key, flag_type) VALUES ('my-flag', 'boolean')`,
+      ],
+      badSql:
+        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, weight) VALUES ('my-flag', 'on', 'boolean', 'true', -1)`,
     },
   ];
 
@@ -531,10 +528,13 @@ describe("evaluation tracking", () => {
       await provider.onClose();
 
       const { rows } = await pool.query(
-        "SELECT flag_key, last_evaluated_at FROM openfeature.flag_evaluations",
+        `SELECT fv.flag_key, fv.variant, fe.last_evaluated_at
+         FROM openfeature.flag_evaluations fe
+         JOIN openfeature.flag_variants fv ON fv.id = fe.flag_variant_id`,
       );
       assertStrictEquals(rows.length, 1);
       assertStrictEquals(rows[0].flag_key, "tracked");
+      assertStrictEquals(rows[0].variant, "on");
       assert(rows[0].last_evaluated_at instanceof Date);
     }));
 
@@ -555,7 +555,10 @@ describe("evaluation tracking", () => {
       await first_provider.onClose();
 
       const first = (await pool.query(
-        "SELECT last_evaluated_at FROM openfeature.flag_evaluations WHERE flag_key = 'repeat'",
+        `SELECT fe.last_evaluated_at
+         FROM openfeature.flag_evaluations fe
+         JOIN openfeature.flag_variants fv ON fv.id = fe.flag_variant_id
+         WHERE fv.flag_key = 'repeat'`,
       )).rows[0].last_evaluated_at;
 
       await delay(10);
@@ -571,28 +574,31 @@ describe("evaluation tracking", () => {
       await second_provider.onClose();
 
       const second = (await pool.query(
-        "SELECT last_evaluated_at FROM openfeature.flag_evaluations WHERE flag_key = 'repeat'",
+        `SELECT fe.last_evaluated_at
+         FROM openfeature.flag_evaluations fe
+         JOIN openfeature.flag_variants fv ON fv.id = fe.flag_variant_id
+         WHERE fv.flag_key = 'repeat'`,
       )).rows[0].last_evaluated_at;
 
       assertGreater(second, first);
     }));
 
-  it("tracks disabled flag evaluations", () =>
+  it("tracks zero-weight flag evaluations as disabled", () =>
     withDb(async (pool) => {
       await insertFlag(pool, "off-flag", "boolean", [
-        { name: "on", value: "true" },
-      ], false);
+        { name: "on", value: "true", weight: 0 },
+      ]);
 
       const provider = new PostgresProvider({ pool });
       await provider.initialize();
       await provider.resolveBooleanEvaluation("off-flag", false, {}, logger);
       await provider.onClose();
 
+      // Disabled flags (all-zero-weight) don't pick a variant, so no eval record
       const { rows } = await pool.query(
-        "SELECT flag_key FROM openfeature.flag_evaluations",
+        "SELECT count(*) as n FROM openfeature.flag_evaluations",
       );
-      assertStrictEquals(rows.length, 1);
-      assertStrictEquals(rows[0].flag_key, "off-flag");
+      assertStrictEquals(Number(rows[0].n), 0);
     }));
 
   it("no-ops when no flags were evaluated", () =>

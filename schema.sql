@@ -1,6 +1,5 @@
 CREATE SCHEMA openfeature;
 
--- Must match FlagData.flagType in provider.ts.
 CREATE TYPE openfeature.flag_type AS ENUM (
     'boolean',
     'string',
@@ -11,7 +10,6 @@ CREATE TYPE openfeature.flag_type AS ENUM (
 CREATE TABLE openfeature.flags (
     flag_key varchar(255) PRIMARY KEY CHECK (flag_key <> ''),
     flag_type openfeature.flag_type NOT NULL,
-    enabled boolean NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     -- Required by the compound FK from flag_variants.
@@ -19,11 +17,12 @@ CREATE TABLE openfeature.flags (
 );
 
 CREATE TABLE openfeature.flag_variants (
+    id integer GENERATED ALWAYS AS IDENTITY UNIQUE,
     flag_key varchar(255) NOT NULL CHECK (flag_key <> ''),
     variant varchar(255) NOT NULL CHECK (variant <> ''),
     flag_type openfeature.flag_type NOT NULL,
     value jsonb NOT NULL,
-    percentage integer CHECK (percentage IS NULL OR percentage BETWEEN 0 AND 100),
+    weight integer NOT NULL DEFAULT 1 CHECK (weight >= 0),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CHECK (jsonb_typeof(value) = flag_type::text),
@@ -31,15 +30,11 @@ CREATE TABLE openfeature.flag_variants (
     FOREIGN KEY (flag_key, flag_type) REFERENCES openfeature.flags (flag_key, flag_type)
 );
 
-COMMENT ON COLUMN openfeature.flag_variants.percentage IS 'NULL = default/fallback variant, 0-100 = rollout participant';
-
-CREATE UNIQUE INDEX one_default_per_flag ON openfeature.flag_variants (flag_key)
-WHERE
-    percentage IS NULL;
+COMMENT ON COLUMN openfeature.flag_variants.weight IS 'Proportional traffic weight. 0 = variant disabled. All weights are normalized by their sum.';
 
 CREATE TABLE openfeature.flag_evaluations (
-    flag_key varchar(255) PRIMARY KEY
-        REFERENCES openfeature.flags (flag_key) ON DELETE CASCADE,
+    flag_variant_id integer PRIMARY KEY
+        REFERENCES openfeature.flag_variants (id) ON DELETE CASCADE,
     last_evaluated_at timestamptz NOT NULL DEFAULT now()
 );
 
