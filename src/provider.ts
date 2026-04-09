@@ -83,14 +83,13 @@ export class PostgresProvider implements Provider {
       () => this.events.emit(ProviderEvents.Stale),
     );
 
-    const scheduleSync = () => {
-      this.cancelSync = jitter(SYNC_INTERVAL_MS, () => {
-        this.syncAndEmit();
-        this.flushEvaluations();
-        scheduleSync();
-      });
-    };
-    scheduleSync();
+    const syncTimer = jitteredDebounce(() => {
+      this.syncAndEmit();
+      this.flushEvaluations();
+      syncTimer();
+    }, SYNC_INTERVAL_MS);
+    this.cancelSync = syncTimer.clear;
+    syncTimer();
     this.state = "ready";
   }
 
@@ -273,12 +272,6 @@ function jitteredDebounce(fn: () => void, mean: number) {
   return debounced;
 }
 
-/** One-shot jittered delay. Returns a cancel function. */
-function jitter(mean: number, fn: () => void): () => void {
-  const d = jitteredDebounce(fn, mean);
-  d();
-  return d.clear;
-}
 
 function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
   let val = map.get(key);
