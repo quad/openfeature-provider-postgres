@@ -299,9 +299,9 @@ async function startNotifyListener(
       onConnectionLost();
       try {
         s = await backOff(async () => {
-          const s = session();
-          await s.next();
-          return s;
+          const fresh = session();
+          await fresh.next();
+          return fresh;
         }, {
           numOfAttempts: Infinity,
           maxDelay: RECONNECT_MAX_DELAY_MS,
