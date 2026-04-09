@@ -44,7 +44,7 @@ export class PostgresProvider implements Provider {
   private lastResultJson = "";
   private readonly pool: pg.Pool;
   private readonly schema: string;
-  private stopListener = () => {};
+  private stopListener: () => Promise<void> = () => Promise.resolve();
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
 
@@ -85,7 +85,7 @@ export class PostgresProvider implements Provider {
     if (this.state !== "ready") return;
     this.state = "disposed";
 
-    this.stopListener();
+    await this.stopListener();
     if (this.syncInterval) clearInterval(this.syncInterval);
     this.debouncedSync.clear();
     await this.flushEvaluations().catch(() => {});
@@ -152,7 +152,10 @@ export class PostgresProvider implements Provider {
       context.targetingKey ?? flagKey,
     );
     if (!chosen) {
-      return { value: defaultValue, reason: StandardResolutionReasons.DISABLED };
+      return {
+        value: defaultValue,
+        reason: StandardResolutionReasons.DISABLED,
+      };
     }
 
     this.evaluatedVariantIds.add(chosen.id);
@@ -242,49 +245,72 @@ function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
   return val;
 }
 
+function createSignal() {
+  const { resolve, promise } = Promise.withResolvers<void>();
+  return {
+    fired: false,
+    fire() {
+      this.fired = true;
+      resolve();
+    },
+    promise,
+  };
+}
+
 async function startNotifyListener(
   pool: pg.Pool,
   channelName: string,
   onNotification: () => void,
   onReconnect: () => void,
   onConnectionLost: () => void,
-): Promise<() => void> {
-  let state: "listening" | "reconnecting" | "stopped" = "stopped";
+): Promise<() => Promise<void>> {
+  const stop = createSignal();
 
-  async function connect(): Promise<pg.PoolClient> {
+  async function* session() {
+    const lost = createSignal();
     const c = await pool.connect();
-    c.on("notification", onNotification);
-    c.on("error", handleConnectionLost);
-    c.on("end", handleConnectionLost);
-    await c.query(`LISTEN ${pg.escapeIdentifier(channelName)}`);
-    state = "listening";
-    return c;
+    try {
+      c.on("notification", onNotification);
+      c.on("error", () => lost.fire());
+      c.on("end", () => lost.fire());
+      await c.query(`LISTEN ${pg.escapeIdentifier(channelName)}`);
+      yield;
+      await Promise.race([lost.promise, stop.promise]);
+    } finally {
+      c.release(true);
+    }
   }
 
-  function handleConnectionLost(): void {
-    if (state === "stopped" || state === "reconnecting") return;
-    state = "reconnecting";
-    client.release(true);
-    onConnectionLost();
-    backOff(async () => {
-      client = await connect();
-    }, {
-      numOfAttempts: Infinity,
-      maxDelay: RECONNECT_MAX_DELAY_MS,
-      jitter: "full",
-      retry: () => state !== "stopped",
-    })
-      .then(() => onReconnect())
-      .catch(() => {
-        // stopped during reconnection — nothing to do
-      });
+  let s = session();
+  await s.next();
+
+  async function lifecycle() {
+    while (true) {
+      await s.next();
+      if (stop.fired) break;
+
+      onConnectionLost();
+      try {
+        s = await backOff(async () => {
+          const s = session();
+          await s.next();
+          return s;
+        }, {
+          numOfAttempts: Infinity,
+          maxDelay: RECONNECT_MAX_DELAY_MS,
+          jitter: "full",
+          retry: () => !stop.fired,
+        });
+      } catch {
+        break;
+      }
+      onReconnect();
+    }
   }
 
-  let client = await connect();
-
-  return () => {
-    const shouldRelease = state === "listening";
-    state = "stopped";
-    if (shouldRelease) client.release(true);
+  const done = lifecycle();
+  return async () => {
+    stop.fire();
+    await done;
   };
 }
