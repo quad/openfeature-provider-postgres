@@ -34,8 +34,7 @@ CREATE TABLE openfeature.flag_variants (
 COMMENT ON COLUMN openfeature.flag_variants.weight IS 'Proportional traffic weight. 0 = variant disabled. All weights are normalized by their sum.';
 
 CREATE TABLE openfeature.flag_evaluations (
-    flag_variant_id integer PRIMARY KEY
-        REFERENCES openfeature.flag_variants (id) ON DELETE CASCADE,
+    flag_variant_id integer PRIMARY KEY REFERENCES openfeature.flag_variants (id) ON DELETE CASCADE,
     last_evaluated_at timestamptz NOT NULL DEFAULT now()
 );
 
