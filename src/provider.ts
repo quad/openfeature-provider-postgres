@@ -30,7 +30,7 @@ export interface PostgresProviderOptions {
 
 const DEFAULT_SCHEMA = "openfeature";
 const CHANNEL = "openfeature_flag_change";
-const SYNC_INTERVAL_MS = 300_000;
+const PERIODIC_SYNC_MS = 300_000;
 const NOTIFY_JITTER_MS = 500;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 
@@ -51,7 +51,7 @@ export class PostgresProvider implements Provider {
   private lastResultHash = NaN;
   private readonly pool: pg.Pool;
   private readonly schema: string;
-  private cancelSync: () => void = () => {};
+  private cancelPeriodicSync: () => void = () => {};
   private stopListener: () => Promise<void> = () => Promise.resolve();
   private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
 
@@ -87,8 +87,8 @@ export class PostgresProvider implements Provider {
       this.syncAndEmit();
       this.flushEvaluations();
       syncTimer();
-    }, SYNC_INTERVAL_MS);
-    this.cancelSync = syncTimer.clear;
+    }, PERIODIC_SYNC_MS);
+    this.cancelPeriodicSync = syncTimer.clear;
     syncTimer();
     this.state = "ready";
   }
@@ -98,7 +98,7 @@ export class PostgresProvider implements Provider {
     this.state = "disposed";
 
     await this.stopListener();
-    this.cancelSync();
+    this.cancelPeriodicSync();
     this.notifySync.clear();
     await this.flushEvaluations();
   }
