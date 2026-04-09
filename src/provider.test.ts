@@ -344,7 +344,7 @@ describe("schema constraints", () => {
         `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('bool-flag', 'boolean', true)`,
       ],
       badSql:
-        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('bool-flag', 'on', 'boolean', '"not-a-boolean"')`,
+        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, weight) VALUES ('bool-flag', 'on', 'boolean', '"not-a-boolean"', 1)`,
       expectedError: "check",
     },
     {
@@ -353,7 +353,7 @@ describe("schema constraints", () => {
         `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('tags', 'object', true)`,
       ],
       badSql:
-        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('tags', 'default', 'object', '["a", "b", "c"]')`,
+        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, weight) VALUES ('tags', 'default', 'object', '["a", "b", "c"]', 1)`,
       expectedError: "check",
     },
     {
@@ -369,7 +369,7 @@ describe("schema constraints", () => {
         `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'boolean', true)`,
       ],
       badSql:
-        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', '', 'boolean', 'true')`,
+        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, weight) VALUES ('my-flag', '', 'boolean', 'true', 1)`,
       expectedError: "check",
     },
     {
