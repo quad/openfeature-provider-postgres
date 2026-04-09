@@ -230,7 +230,7 @@ export class PostgresProvider implements Provider {
     await this.pool.query(
       `INSERT INTO ${s}.flag_evaluations (flag_variant_id)
        SELECT unnest($1::int[])
-       ON CONFLICT (flag_variant_id) DO UPDATE SET last_evaluated_at = now()`,
+       ON CONFLICT (flag_variant_id) DO UPDATE SET last_evaluated_at = GREATEST(flag_evaluations.last_evaluated_at, now())`,
       [ids],
     );
   }
