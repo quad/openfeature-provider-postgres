@@ -113,7 +113,7 @@ export class PostgresProvider implements Provider {
         () => {},
       );
 
-    while (!this.stop.signal.aborted) {
+    while (true) {
       const reason = await Promise.race([
         sleep(this.periodicSyncMs).then(() => "periodic" as const),
         this.syncSignal.wait(),
