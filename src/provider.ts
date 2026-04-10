@@ -45,7 +45,7 @@ const RECONNECT_MAX_DELAY_MS = 30_000;
 export class PostgresProvider implements Provider {
   readonly metadata = { name: "openfeature-provider-postgres" };
   readonly runsOn = "server" as const;
-  events: OpenFeatureEventEmitter = new OpenFeatureEventEmitter();
+  readonly events: OpenFeatureEventEmitter = new OpenFeatureEventEmitter();
 
   private cache = new Map<string, FlagData>();
   private evaluatedVariantIds = new Set<number>();
@@ -279,7 +279,7 @@ export class PostgresProvider implements Provider {
   }
 }
 
-type SyncReason = "notify" | "reconnect" | "periodic";
+type SyncReason = "notify" | "reconnect";
 
 function jitter(max: number): number {
   return Math.random() * max;
