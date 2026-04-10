@@ -32,8 +32,8 @@ export interface PostgresProviderOptions {
 const DEFAULT_SCHEMA = "openfeature";
 const CHANNEL = "openfeature_flag_change";
 const PERIODIC_SYNC_MAX_MS = 600_000;
-const NOTIFY_DELAY_MAX_MS = 1_000;
-const RECONNECT_MAX_DELAY_MS = 30_000;
+const NOTIFY_SYNC_MAX_MS = 1_000;
+const RECONNECT_MAX_MS = 30_000;
 
 /**
  * PostgreSQL-backed OpenFeature provider.
@@ -105,7 +105,7 @@ export class PostgresProvider implements Provider {
       const reason = await Promise.race([
         sleep(this.periodicSyncMs).then(() => "periodic" as const),
         this.syncSignal.promise.then(async (r) => {
-          if (r === "notify") await sleep(this.jitter(NOTIFY_DELAY_MAX_MS));
+          if (r === "notify") await sleep(this.jitter(NOTIFY_SYNC_MAX_MS));
           return r;
         }),
         this.stopSignal.promise,
@@ -345,7 +345,7 @@ async function startNotifyListener(
           return fresh;
         }, {
           numOfAttempts: Infinity,
-          maxDelay: RECONNECT_MAX_DELAY_MS,
+          maxDelay: RECONNECT_MAX_MS,
           jitter: "full",
           retry: () => !stop.fired,
         });
