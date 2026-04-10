@@ -89,18 +89,22 @@ export class PostgresProvider implements Provider {
     const { signal } = this.abort;
     const sleep = (ms: number) =>
       delay(ms, { signal, persistent: false }).catch(() => {});
+    const stopped = new Promise<"stop">((resolve) =>
+      signal.addEventListener("abort", () => resolve("stop"), { once: true })
+    );
 
-    while (!signal.aborted) {
+    while (true) {
       const reason = await Promise.race([
         sleep(jitter(PERIODIC_SYNC_MS)).then(() => "periodic" as const),
         this.syncSignal.promise,
+        stopped,
       ]);
+      if (reason === "stop") break;
       this.syncSignal.reset();
-      if (signal.aborted) break;
 
       if (reason === "notify") {
-        await sleep(jitter(NOTIFY_SYNC_MS));
-        if (signal.aborted) break;
+        const r = await Promise.race([sleep(jitter(NOTIFY_SYNC_MS)), stopped]);
+        if (r === "stop") break;
       }
 
       let changed: boolean;
