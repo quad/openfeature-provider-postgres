@@ -511,7 +511,7 @@ describe("sync", () => {
           if (failQueries) return Promise.reject(new Error("DB down"));
           return pool.query(sql);
         },
-      } as unknown as typeof pool; // partial mock — only implements connect/query
+      } as unknown as typeof pool;
 
       await using stack = new AsyncDisposableStack();
       const provider = stack.adopt(
@@ -667,6 +667,33 @@ describe("evaluation tracking", () => {
     withDb(async (pool) => {
       const provider = new PostgresProvider({ pool, jitter: false });
       await provider.initialize();
+      await provider.onClose();
+
+      const { rows } = await pool.query(
+        "SELECT count(*) as n FROM openfeature.flag_evaluations",
+      );
+      assertStrictEquals(Number(rows[0].n), 0);
+    }));
+
+  it("discards poison IDs for deleted variants", () =>
+    withDb(async (pool) => {
+      await insertFlag(pool, "ephemeral", "boolean", [
+        { name: "on", value: "true" },
+      ]);
+
+      const provider = new PostgresProvider({ pool, jitter: false });
+      await provider.initialize();
+      await provider.resolveBooleanEvaluation("ephemeral", false, {}, logger);
+
+      // Delete the variant before flush — creates a poison FK reference
+      await pool.query(
+        "DELETE FROM openfeature.flag_variants WHERE flag_key = 'ephemeral'",
+      );
+      await pool.query(
+        "DELETE FROM openfeature.flags WHERE flag_key = 'ephemeral'",
+      );
+
+      // onClose triggers flushEvaluations — should not throw despite FK violation
       await provider.onClose();
 
       const { rows } = await pool.query(

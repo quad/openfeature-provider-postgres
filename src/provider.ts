@@ -124,7 +124,7 @@ export class PostgresProvider implements Provider {
       return;
     }
     if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
-    if (reason === "periodic") this.flushEvaluations();
+    if (reason === "periodic") await this.flushEvaluations();
   }
 
   // deno-lint-ignore require-await -- Provider interface requires Promise return
@@ -268,7 +268,8 @@ export class PostgresProvider implements Provider {
     try {
       await this.pool.query(
         `INSERT INTO ${s}.flag_evaluations AS fe (flag_variant_id)
-         SELECT unnest($1::int[])
+         SELECT fv.id FROM unnest($1::int[]) AS v
+         JOIN ${s}.flag_variants fv ON fv.id = v
          ON CONFLICT (flag_variant_id) DO UPDATE SET last_evaluated_at = GREATEST(fe.last_evaluated_at, now())`,
         [ids],
       );

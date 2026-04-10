@@ -14,6 +14,18 @@ Flags are cached in memory. The cache is refreshed in two ways:
 Each provider instance holds one dedicated connection from the pool for
 `LISTEN`. Size your pool accordingly.
 
+## Pool configuration
+
+Set `statement_timeout` on your pool to prevent hung queries from blocking the
+provider indefinitely:
+
+```ts
+const pool = new pg.Pool({
+  connectionString: "...",
+  statement_timeout: 10_000, // 10s
+});
+```
+
 ## License
 
 Apache-2.0
