@@ -4,7 +4,7 @@ import {
   assertGreater,
   assertRejects,
   assertStrictEquals,
-} from "jsr:@std/assert@1";
+} from "@std/assert";
 import {
   DefaultLogger,
   FlagNotFoundError,

@@ -1,4 +1,4 @@
-import { assertStrictEquals } from "jsr:@std/assert@1";
+import { assertStrictEquals } from "@std/assert";
 import { deadline } from "@std/async/deadline";
 import { OpenFeature, ProviderEvents } from "@openfeature/server-sdk";
 import { insertFlag, withDb } from "./pglite-helper.test.ts";
