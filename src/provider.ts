@@ -31,8 +31,16 @@ export interface PostgresProviderOptions {
 
 const DEFAULT_SCHEMA = "openfeature";
 const CHANNEL = "openfeature_flag_change";
+
+// All jittered delays use Equal Jitter: max/2 + random * max/2
+// https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
+//
+// Periodic: computed once per instance for stable, debuggable scheduling.
+// https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
 const PERIODIC_SYNC_MAX_MS = 600_000;
+// NOTIFY: re-randomized on each event to spread cross-instance thundering herd.
 const NOTIFY_SYNC_MAX_MS = 1_000;
+// Reconnect: exponential backoff with full jitter, capped at this delay.
 const RECONNECT_MAX_MS = 30_000;
 
 /**
