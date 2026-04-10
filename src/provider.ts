@@ -78,7 +78,7 @@ export class PostgresProvider implements Provider {
   async initialize(_context?: EvaluationContext): Promise<void> {
     if (this.done) return;
 
-    await this.syncCache();
+    await this.loadFlags();
 
     const stopListener = await startNotifyListener(
       this.pool,
@@ -130,7 +130,7 @@ export class PostgresProvider implements Provider {
   private async refreshCache(): Promise<void> {
     let changed: boolean;
     try {
-      changed = await this.syncCache();
+      changed = await this.loadFlags();
     } catch {
       this.events.emit(ProviderEvents.Stale);
       return;
@@ -238,7 +238,7 @@ export class PostgresProvider implements Provider {
     return flag.variants[flag.variants.length - 1];
   }
 
-  private async syncCache(): Promise<boolean> {
+  private async loadFlags(): Promise<boolean> {
     const s = pg.escapeIdentifier(this.schema);
     const result = await this.pool.query(`
       SELECT f.flag_key, f.flag_type, f.enabled, fv.id, fv.variant, fv.value, fv.weight
