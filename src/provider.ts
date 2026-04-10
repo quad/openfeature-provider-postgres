@@ -122,12 +122,12 @@ export class PostgresProvider implements Provider {
       this.syncSignal.reset();
       if (reason === "stop") break;
       if (reason === "notify") await sleep(this.jitter(NOTIFY_SYNC_MAX_MS));
-      await this.performSync();
+      await this.refreshCache();
       if (reason === "sync") await this.flushEvaluations();
     }
   }
 
-  private async performSync(): Promise<void> {
+  private async refreshCache(): Promise<void> {
     let changed: boolean;
     try {
       changed = await this.syncCache();
