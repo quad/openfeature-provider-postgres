@@ -86,42 +86,38 @@ export class PostgresProvider implements Provider {
   private async lifecycle(
     stopListener: () => Promise<void>,
   ): Promise<void> {
-    const timers = new AbortController();
+    await using stack = new AsyncDisposableStack();
+    const timers = stack.adopt(new AbortController(), (c) => c.abort());
+    stack.defer(() => this.flushEvaluations());
+    stack.defer(stopListener);
+
     const sleep = (ms: number) =>
       delay(ms, { signal: timers.signal, persistent: false }).catch(() => {});
-    const { promise: stopped } = this.stopSignal;
 
     while (true) {
       const reason = await Promise.race([
         sleep(jitter(PERIODIC_SYNC_MS)).then(() => "periodic" as const),
-        this.syncSignal.promise,
-        stopped,
+        this.syncSignal.promise.then(async (r) => {
+          if (r === "notify") await sleep(jitter(NOTIFY_SYNC_MS));
+          return r;
+        }),
+        this.stopSignal.promise,
       ]);
       if (reason === "stop") break;
-      this.syncSignal.reset();
-
-      if (reason === "notify") {
-        const r = await Promise.race([sleep(jitter(NOTIFY_SYNC_MS)), stopped]);
-        if (r === "stop") break;
-      }
-
-      let changed: boolean;
-      try {
-        changed = await this.syncCache();
-      } catch {
-        this.events.emit(ProviderEvents.Stale);
-        continue;
-      }
-      if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
-
-      if (reason === "periodic") {
-        this.flushEvaluations();
-      }
+      await this.performSync(reason);
     }
+  }
 
-    timers.abort();
-    await stopListener();
-    await this.flushEvaluations();
+  private async performSync(reason: SyncReason | "periodic"): Promise<void> {
+    let changed: boolean;
+    try {
+      changed = await this.syncCache();
+    } catch {
+      this.events.emit(ProviderEvents.Stale);
+      return;
+    }
+    if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
+    if (reason === "periodic") this.flushEvaluations();
   }
 
   // deno-lint-ignore require-await -- Provider interface requires Promise return
@@ -292,19 +288,14 @@ function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
 }
 
 function createSignal<T = void>() {
-  let resolve: (value: T) => void;
-  let promise = new Promise<T>((r) => resolve = r);
+  let { resolve, promise } = Promise.withResolvers<T>();
   return {
     fired: false,
-    promise,
+    get promise() { return promise; },
     fire(value: T) {
       this.fired = true;
       resolve(value);
-    },
-    reset() {
-      this.fired = false;
-      promise = new Promise<T>((r) => resolve = r);
-      this.promise = promise;
+      ({ resolve, promise } = Promise.withResolvers<T>());
     },
   };
 }
