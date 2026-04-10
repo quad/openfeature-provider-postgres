@@ -113,14 +113,12 @@ export class PostgresProvider implements Provider {
     while (true) {
       const reason = await Promise.race([
         sleep(this.periodicSyncMs).then(() => "periodic" as const),
-        this.syncSignal.wait().then(async (r) => {
-          if (r === "notify") await sleep(this.jitter(NOTIFY_SYNC_MAX_MS));
-          return r;
-        }),
+        this.syncSignal.wait(),
         this.stopSignal.wait().then(() => "stop" as const),
       ]);
       this.syncSignal.reset();
       if (reason === "stop") break;
+      if (reason === "notify") await sleep(this.jitter(NOTIFY_SYNC_MAX_MS));
       await this.performSync(reason);
     }
   }
