@@ -61,7 +61,7 @@ export class PostgresProvider implements Provider {
   constructor(options: PostgresProviderOptions) {
     this.jitter = options.jitter === false
       ? (max) => max
-      : (max) => Math.random() * max;
+      : (max) => max / 2 + Math.random() * max / 2;
     this.periodicSyncMs = this.jitter(PERIODIC_SYNC_MAX_MS);
     this.pool = options.pool;
     this.schema = options.schema ?? DEFAULT_SCHEMA;
