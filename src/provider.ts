@@ -103,6 +103,7 @@ export class PostgresProvider implements Provider {
   ): Promise<void> {
     await using stack = new AsyncDisposableStack();
     const timers = stack.adopt(new AbortController(), (c) => c.abort());
+    this.stopSignal.wait().then(() => timers.abort());
     stack.defer(() => this.flushEvaluations());
     stack.defer(stopListener);
 
