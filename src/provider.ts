@@ -62,7 +62,7 @@ export class PostgresProvider implements Provider {
   private readonly periodicSyncMs: number;
   private readonly pool: pg.Pool;
   private readonly schema: string;
-  private readonly stopSignal = createEvent();
+  private readonly stop = new AbortController();
   private readonly syncSignal = createEvent<"notify" | "reconnect">();
   private done: Promise<void> | null = null;
 
@@ -94,7 +94,7 @@ export class PostgresProvider implements Provider {
   async onClose(): Promise<void> {
     if (!this.done) return;
 
-    this.stopSignal.set();
+    this.stop.abort();
     await this.done;
   }
 
@@ -102,19 +102,22 @@ export class PostgresProvider implements Provider {
     stopListener: () => Promise<void>,
   ): Promise<void> {
     await using stack = new AsyncDisposableStack();
-    const timers = stack.adopt(new AbortController(), (c) => c.abort());
-    this.stopSignal.wait().then(() => timers.abort());
     stack.defer(() => this.flushEvaluations());
     stack.defer(stopListener);
 
-    const sleep = (ms: number) =>
-      delay(ms, { signal: timers.signal, persistent: false }).catch(() => {});
+    const { promise: stopped, resolve: onStop } = Promise.withResolvers<void>();
+    this.stop.signal.addEventListener("abort", () => onStop());
 
-    while (true) {
+    const sleep = (ms: number) =>
+      delay(ms, { signal: this.stop.signal, persistent: false }).catch(
+        () => {},
+      );
+
+    while (!this.stop.signal.aborted) {
       const reason = await Promise.race([
         sleep(this.periodicSyncMs).then(() => "periodic" as const),
         this.syncSignal.wait(),
-        this.stopSignal.wait().then(() => "stop" as const),
+        stopped.then(() => "stop" as const),
       ]);
       this.syncSignal.reset();
       if (reason === "stop") break;
