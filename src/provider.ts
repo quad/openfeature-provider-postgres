@@ -31,8 +31,8 @@ export interface PostgresProviderOptions {
 
 const DEFAULT_SCHEMA = "openfeature";
 const CHANNEL = "openfeature_flag_change";
-const PERIODIC_SYNC_MS = 300_000;
-const NOTIFY_SYNC_MS = 500;
+const PERIODIC_SYNC_MAX_MS = 600_000;
+const NOTIFY_DELAY_MAX_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 
 /**
@@ -103,9 +103,11 @@ export class PostgresProvider implements Provider {
 
     while (true) {
       const reason = await Promise.race([
-        sleep(PERIODIC_SYNC_MS).then(() => "periodic" as const),
+        sleep(PERIODIC_SYNC_MAX_MS).then(() => "periodic" as const),
         this.syncSignal.promise.then(async (r) => {
-          if (r === "notify" && this.jitterEnabled) await sleep(NOTIFY_SYNC_MS);
+          if (r === "notify" && this.jitterEnabled) {
+            await sleep(NOTIFY_DELAY_MAX_MS);
+          }
           return r;
         }),
         this.stopSignal.promise,
@@ -280,9 +282,8 @@ export class PostgresProvider implements Provider {
 
 type SyncReason = "notify" | "reconnect" | "periodic";
 
-/** Exponential random variate, capped at 3× mean. */
-function jitter(mean: number): number {
-  return -Math.log(Math.random()) * mean;
+function jitter(max: number): number {
+  return Math.random() * max;
 }
 
 function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
