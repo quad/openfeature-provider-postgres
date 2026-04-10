@@ -122,13 +122,12 @@ export class PostgresProvider implements Provider {
       this.syncSignal.reset();
       if (reason === "stop") break;
       if (reason === "notify") await sleep(this.jitter(NOTIFY_SYNC_MAX_MS));
-      await this.performSync(reason);
+      await this.performSync();
+      if (reason === "periodic") await this.flushEvaluations();
     }
   }
 
-  private async performSync(
-    reason: "notify" | "reconnect" | "periodic",
-  ): Promise<void> {
+  private async performSync(): Promise<void> {
     let changed: boolean;
     try {
       changed = await this.syncCache();
@@ -137,7 +136,6 @@ export class PostgresProvider implements Provider {
       return;
     }
     if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
-    if (reason === "periodic") await this.flushEvaluations();
   }
 
   // deno-lint-ignore require-await -- Provider interface requires Promise return
