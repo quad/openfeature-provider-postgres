@@ -131,8 +131,10 @@ export class PostgresProvider implements Provider {
     let changed: boolean;
     try {
       changed = await this.loadFlags();
-    } catch {
-      this.events.emit(ProviderEvents.Stale);
+    } catch (err) {
+      this.events.emit(ProviderEvents.Stale, {
+        message: err instanceof Error ? err.message : String(err),
+      });
       return;
     }
     if (changed) this.events.emit(ProviderEvents.ConfigurationChanged);
