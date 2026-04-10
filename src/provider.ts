@@ -51,7 +51,7 @@ export class PostgresProvider implements Provider {
   private lastResultHash = NaN;
   private readonly pool: pg.Pool;
   private readonly schema: string;
-  private readonly abort = new AbortController();
+  private readonly stopSignal = createSignal<"stop">();
   private readonly syncSignal = createSignal<SyncReason>();
   private done: Promise<void> | null = null;
 
@@ -77,21 +77,19 @@ export class PostgresProvider implements Provider {
   }
 
   async onClose(): Promise<void> {
-    if (!this.done || this.abort.signal.aborted) return;
+    if (!this.done || this.stopSignal.fired) return;
 
-    this.abort.abort();
+    this.stopSignal.fire("stop");
     await this.done;
   }
 
   private async lifecycle(
     stopListener: () => Promise<void>,
   ): Promise<void> {
-    const { signal } = this.abort;
+    const timers = new AbortController();
     const sleep = (ms: number) =>
-      delay(ms, { signal, persistent: false }).catch(() => {});
-    const stopped = new Promise<"stop">((resolve) =>
-      signal.addEventListener("abort", () => resolve("stop"), { once: true })
-    );
+      delay(ms, { signal: timers.signal, persistent: false }).catch(() => {});
+    const { promise: stopped } = this.stopSignal;
 
     while (true) {
       const reason = await Promise.race([
@@ -121,6 +119,7 @@ export class PostgresProvider implements Provider {
       }
     }
 
+    timers.abort();
     await stopListener();
     await this.flushEvaluations();
   }
