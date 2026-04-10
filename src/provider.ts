@@ -282,7 +282,7 @@ type SyncReason = "notify" | "reconnect" | "periodic";
 
 /** Exponential random variate, capped at 3× mean. */
 function jitter(mean: number): number {
-  return Math.min(-Math.log(Math.random()) * mean, mean * 3);
+  return -Math.log(Math.random()) * mean;
 }
 
 function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
