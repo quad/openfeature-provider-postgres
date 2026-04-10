@@ -85,7 +85,9 @@ export class PostgresProvider implements Provider {
       CHANNEL,
       () => this.syncSignal.set("notify"),
       () => this.syncSignal.set("sync"),
-      () => this.events.emit(ProviderEvents.Stale),
+      () => this.events.emit(ProviderEvents.Stale, {
+        message: "LISTEN connection lost",
+      }),
     );
 
     this.done = this.lifecycle(stopListener);
