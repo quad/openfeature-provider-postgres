@@ -95,18 +95,17 @@ export class PostgresProvider implements Provider {
     stack.defer(stopListener);
 
     const sleep = (ms: number) =>
-      delay(this.jitterEnabled ? jitter(ms) : ms, {
-        signal: timers.signal,
-        persistent: false,
-      })
-        .catch(() => {});
+      delay(ms, { signal: timers.signal, persistent: false }).catch(() => {});
+    const periodicMs = this.jitterEnabled
+      ? jitter(PERIODIC_SYNC_MAX_MS)
+      : PERIODIC_SYNC_MAX_MS;
 
     while (true) {
       const reason = await Promise.race([
-        sleep(PERIODIC_SYNC_MAX_MS).then(() => "periodic" as const),
+        sleep(periodicMs).then(() => "periodic" as const),
         this.syncSignal.promise.then(async (r) => {
           if (r === "notify" && this.jitterEnabled) {
-            await sleep(NOTIFY_DELAY_MAX_MS);
+            await sleep(jitter(NOTIFY_DELAY_MAX_MS));
           }
           return r;
         }),
