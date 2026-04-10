@@ -50,8 +50,8 @@ export class PostgresProvider implements Provider {
   private cache = new Map<string, FlagData>();
   private evaluatedVariantIds = new Set<number>();
   private lastResultHash = NaN;
-  private readonly jitterEnabled: boolean;
-  private readonly periodicMs: number;
+  private readonly jitter: (max: number) => number;
+  private readonly periodicSyncMs: number;
   private readonly pool: pg.Pool;
   private readonly schema: string;
   private readonly stopSignal = createSignal<"stop">();
@@ -59,10 +59,10 @@ export class PostgresProvider implements Provider {
   private done: Promise<void> | null = null;
 
   constructor(options: PostgresProviderOptions) {
-    this.jitterEnabled = options.jitter ?? true;
-    this.periodicMs = this.jitterEnabled
-      ? jitter(PERIODIC_SYNC_MAX_MS)
-      : PERIODIC_SYNC_MAX_MS;
+    this.jitter = options.jitter === false
+      ? (max) => max
+      : (max) => Math.random() * max;
+    this.periodicSyncMs = this.jitter(PERIODIC_SYNC_MAX_MS);
     this.pool = options.pool;
     this.schema = options.schema ?? DEFAULT_SCHEMA;
   }
@@ -103,15 +103,9 @@ export class PostgresProvider implements Provider {
 
     while (true) {
       const reason = await Promise.race([
-        sleep(this.periodicMs).then(() => "periodic" as const),
+        sleep(this.periodicSyncMs).then(() => "periodic" as const),
         this.syncSignal.promise.then(async (r) => {
-          if (r === "notify") {
-            await sleep(
-              this.jitterEnabled
-                ? jitter(NOTIFY_DELAY_MAX_MS)
-                : NOTIFY_DELAY_MAX_MS,
-            );
-          }
+          if (r === "notify") await sleep(this.jitter(NOTIFY_DELAY_MAX_MS));
           return r;
         }),
         this.stopSignal.promise,
@@ -285,10 +279,6 @@ export class PostgresProvider implements Provider {
 }
 
 type SyncReason = "notify" | "reconnect";
-
-function jitter(max: number): number {
-  return Math.random() * max;
-}
 
 function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
   let val = map.get(key);
