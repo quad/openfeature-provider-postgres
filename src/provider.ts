@@ -92,7 +92,7 @@ export class PostgresProvider implements Provider {
   }
 
   async onClose(): Promise<void> {
-    if (!this.done || this.stopSignal.fired) return;
+    if (!this.done) return;
 
     this.stopSignal.fire("stop");
     await this.done;
