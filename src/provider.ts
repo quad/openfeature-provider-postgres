@@ -51,11 +51,9 @@ export class PostgresProvider implements Provider {
   private lastResultHash = NaN;
   private readonly pool: pg.Pool;
   private readonly schema: string;
-  private abort = new AbortController();
-  private syncSignal = createSignal<SyncReason>();
-  private stopListener: () => Promise<void> = () => Promise.resolve();
-  private done: Promise<void> = Promise.resolve();
-  private state: "uninitialized" | "ready" | "disposed" = "uninitialized";
+  private readonly abort = new AbortController();
+  private readonly syncSignal = createSignal<SyncReason>();
+  private done: Promise<void> | null = null;
 
   constructor(options: PostgresProviderOptions) {
     this.pool = options.pool;
@@ -63,11 +61,11 @@ export class PostgresProvider implements Provider {
   }
 
   async initialize(_context?: EvaluationContext): Promise<void> {
-    if (this.state !== "uninitialized") return;
+    if (this.done) return;
 
     await this.syncCache();
 
-    this.stopListener = await startNotifyListener(
+    const stopListener = await startNotifyListener(
       this.pool,
       CHANNEL,
       () => this.syncSignal.fire("notify"),
@@ -75,35 +73,34 @@ export class PostgresProvider implements Provider {
       () => this.events.emit(ProviderEvents.Stale),
     );
 
-    this.state = "ready";
-    this.done = this.lifecycle();
+    this.done = this.lifecycle(stopListener);
   }
 
   async onClose(): Promise<void> {
-    if (this.state !== "ready") return;
-    this.state = "disposed";
+    if (!this.done || this.abort.signal.aborted) return;
 
-    await this.stopListener();
     this.abort.abort();
     await this.done;
   }
 
-  private async lifecycle(): Promise<void> {
+  private async lifecycle(
+    stopListener: () => Promise<void>,
+  ): Promise<void> {
     const { signal } = this.abort;
     const sleep = (ms: number) =>
       delay(ms, { signal, persistent: false }).catch(() => {});
 
-    while (this.state === "ready") {
+    while (!signal.aborted) {
       const reason = await Promise.race([
         sleep(jitter(PERIODIC_SYNC_MS)).then(() => "periodic" as const),
         this.syncSignal.promise,
       ]);
       this.syncSignal.reset();
-      if (this.state !== "ready") break;
+      if (signal.aborted) break;
 
       if (reason === "notify") {
         await sleep(jitter(NOTIFY_SYNC_MS));
-        if (this.state !== "ready") break;
+        if (signal.aborted) break;
       }
 
       let changed: boolean;
@@ -120,6 +117,7 @@ export class PostgresProvider implements Provider {
       }
     }
 
+    await stopListener();
     await this.flushEvaluations();
   }
 
