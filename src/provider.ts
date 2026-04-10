@@ -63,7 +63,7 @@ export class PostgresProvider implements Provider {
   private readonly pool: pg.Pool;
   private readonly schema: string;
   private readonly stop = new AbortController();
-  private readonly syncSignal = createEvent<"notify" | "reconnect">();
+  private readonly syncSignal = createEvent<"notify" | "sync">();
   private done: Promise<void> | null = null;
 
   constructor(options: PostgresProviderOptions) {
@@ -84,7 +84,7 @@ export class PostgresProvider implements Provider {
       this.pool,
       CHANNEL,
       () => this.syncSignal.set("notify"),
-      () => this.syncSignal.set("reconnect"),
+      () => this.syncSignal.set("sync"),
       () => this.events.emit(ProviderEvents.Stale),
     );
 
@@ -115,7 +115,7 @@ export class PostgresProvider implements Provider {
 
     while (true) {
       const reason = await Promise.race([
-        sleep(this.periodicSyncMs).then(() => "periodic" as const),
+        sleep(this.periodicSyncMs).then(() => "sync" as const),
         this.syncSignal.wait(),
         stopped.then(() => "stop" as const),
       ]);
@@ -123,7 +123,7 @@ export class PostgresProvider implements Provider {
       if (reason === "stop") break;
       if (reason === "notify") await sleep(this.jitter(NOTIFY_SYNC_MAX_MS));
       await this.performSync();
-      if (reason === "periodic") await this.flushEvaluations();
+      if (reason === "sync") await this.flushEvaluations();
     }
   }
 

@@ -629,6 +629,80 @@ describe("evaluation tracking", () => {
       assertGreater(second, first);
     }));
 
+  it("notify does not flush evaluations", () =>
+    withDb(async (pool) => {
+      await insertFlag(pool, "tracked", "boolean", [
+        { name: "on", value: "true" },
+      ]);
+
+      await using stack = new AsyncDisposableStack();
+      const provider = stack.adopt(
+        new PostgresProvider({ pool, jitter: false }),
+        (p) => p.onClose(),
+      );
+      await provider.initialize();
+      await provider.resolveBooleanEvaluation("tracked", false, {}, logger);
+
+      // Trigger notify path and wait for the sync to complete
+      await insertFlag(pool, "other", "boolean", [
+        { name: "on", value: "true" },
+      ]);
+      const changed = new Promise<void>((resolve) => {
+        provider.events.addHandler(
+          ProviderEvents.ConfigurationChanged,
+          () => resolve(),
+        );
+      });
+      await pool.query("NOTIFY openfeature_flag_change");
+      await deadline(changed, 1_000);
+
+      // Notify syncs the cache but does not flush evaluations
+      const { rows } = await pool.query(
+        "SELECT count(*) as n FROM openfeature.flag_evaluations",
+      );
+      assertStrictEquals(Number(rows[0].n), 0);
+    }));
+
+  it("reconnect flushes evaluations", () =>
+    withDb(async (pool) => {
+      await insertFlag(pool, "tracked", "boolean", [
+        { name: "on", value: "true" },
+      ]);
+
+      const getListenerClient = interceptListenerClient(pool);
+
+      await using stack = new AsyncDisposableStack();
+      const provider = stack.adopt(
+        new PostgresProvider({ pool, jitter: false }),
+        (p) => p.onClose(),
+      );
+      await provider.initialize();
+      await provider.resolveBooleanEvaluation("tracked", false, {}, logger);
+
+      // Simulate connection loss and wait for reconnect sync
+      const changed = new Promise<void>((resolve) => {
+        provider.events.addHandler(
+          ProviderEvents.ConfigurationChanged,
+          () => resolve(),
+        );
+      });
+      getListenerClient().emit("error", new Error("simulated disconnect"));
+
+      // Insert a flag so ConfigurationChanged fires after reconnect
+      await insertFlag(pool, "new-flag", "boolean", [
+        { name: "on", value: "true" },
+      ]);
+      await deadline(changed, 2_000);
+      // flushEvaluations runs after performSync emits ConfigurationChanged
+      await delay(100);
+
+      // Reconnect triggers a sync flush
+      const { rows } = await pool.query(
+        "SELECT count(*) as n FROM openfeature.flag_evaluations",
+      );
+      assertStrictEquals(Number(rows[0].n), 1);
+    }));
+
   it("does not track disabled flag evaluations (zero-weight)", () =>
     withDb(async (pool) => {
       await insertFlag(pool, "off-flag", "boolean", [
