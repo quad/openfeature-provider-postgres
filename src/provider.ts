@@ -105,8 +105,12 @@ export class PostgresProvider implements Provider {
       const reason = await Promise.race([
         sleep(this.periodicMs).then(() => "periodic" as const),
         this.syncSignal.promise.then(async (r) => {
-          if (r === "notify" && this.jitterEnabled) {
-            await sleep(jitter(NOTIFY_DELAY_MAX_MS));
+          if (r === "notify") {
+            await sleep(
+              this.jitterEnabled
+                ? jitter(NOTIFY_DELAY_MAX_MS)
+                : NOTIFY_DELAY_MAX_MS,
+            );
           }
           return r;
         }),
