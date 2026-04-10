@@ -62,8 +62,8 @@ export class PostgresProvider implements Provider {
   private readonly periodicSyncMs: number;
   private readonly pool: pg.Pool;
   private readonly schema: string;
-  private readonly stopSignal = createSignal<"stop">();
-  private readonly syncSignal = createSignal<SyncReason>();
+  private readonly stopSignal = createEvent();
+  private readonly syncSignal = createEvent<"notify" | "reconnect">();
   private done: Promise<void> | null = null;
 
   constructor(options: PostgresProviderOptions) {
@@ -83,8 +83,8 @@ export class PostgresProvider implements Provider {
     const stopListener = await startNotifyListener(
       this.pool,
       CHANNEL,
-      () => this.syncSignal.fire("notify"),
-      () => this.syncSignal.fire("reconnect"),
+      () => this.syncSignal.set("notify"),
+      () => this.syncSignal.set("reconnect"),
       () => this.events.emit(ProviderEvents.Stale),
     );
 
@@ -94,7 +94,7 @@ export class PostgresProvider implements Provider {
   async onClose(): Promise<void> {
     if (!this.done) return;
 
-    this.stopSignal.fire("stop");
+    this.stopSignal.set();
     await this.done;
   }
 
@@ -112,18 +112,21 @@ export class PostgresProvider implements Provider {
     while (true) {
       const reason = await Promise.race([
         sleep(this.periodicSyncMs).then(() => "periodic" as const),
-        this.syncSignal.promise.then(async (r) => {
+        this.syncSignal.wait().then(async (r) => {
           if (r === "notify") await sleep(this.jitter(NOTIFY_SYNC_MAX_MS));
           return r;
         }),
-        this.stopSignal.promise,
+        this.stopSignal.wait().then(() => "stop" as const),
       ]);
+      this.syncSignal.reset();
       if (reason === "stop") break;
       await this.performSync(reason);
     }
   }
 
-  private async performSync(reason: SyncReason | "periodic"): Promise<void> {
+  private async performSync(
+    reason: "notify" | "reconnect" | "periodic",
+  ): Promise<void> {
     let changed: boolean;
     try {
       changed = await this.syncCache();
@@ -287,8 +290,6 @@ export class PostgresProvider implements Provider {
   }
 }
 
-type SyncReason = "notify" | "reconnect";
-
 function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
   let val = map.get(key);
   if (val === undefined) {
@@ -298,16 +299,23 @@ function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
   return val;
 }
 
-function createSignal<T = void>() {
+function createEvent<T = void>() {
+  let signaled = false;
   let { resolve, promise } = Promise.withResolvers<T>();
   return {
-    fired: false,
-    get promise() {
+    get signaled() {
+      return signaled;
+    },
+    wait() {
       return promise;
     },
-    fire(value: T) {
-      this.fired = true;
-      resolve(value);
+    set(v: T) {
+      signaled = true;
+      resolve(v);
+    },
+    reset() {
+      if (!signaled) return;
+      signaled = false;
       ({ resolve, promise } = Promise.withResolvers<T>());
     },
   };
@@ -320,18 +328,18 @@ async function startNotifyListener(
   onReconnect: () => void,
   onConnectionLost: () => void,
 ): Promise<() => Promise<void>> {
-  const stop = createSignal();
+  const stop = createEvent();
 
   async function* session() {
-    const lost = createSignal();
+    const lost = createEvent();
     const c = await pool.connect();
     try {
       c.on("notification", onNotification);
-      c.on("error", () => lost.fire());
-      c.on("end", () => lost.fire());
+      c.on("error", () => lost.set());
+      c.on("end", () => lost.set());
       await c.query(`LISTEN ${pg.escapeIdentifier(channelName)}`);
       yield;
-      await Promise.race([lost.promise, stop.promise]);
+      await Promise.race([lost.wait(), stop.wait()]);
     } finally {
       c.release(true);
     }
@@ -343,7 +351,7 @@ async function startNotifyListener(
   async function lifecycle() {
     while (true) {
       await s.next();
-      if (stop.fired) break;
+      if (stop.signaled) break;
 
       onConnectionLost();
       try {
@@ -355,7 +363,7 @@ async function startNotifyListener(
           numOfAttempts: Infinity,
           maxDelay: RECONNECT_MAX_MS,
           jitter: "full",
-          retry: () => !stop.fired,
+          retry: () => !stop.signaled,
         });
       } catch {
         break;
@@ -366,7 +374,7 @@ async function startNotifyListener(
 
   const done = lifecycle();
   return async () => {
-    stop.fire();
+    stop.set();
     await done;
   };
 }
