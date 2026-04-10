@@ -288,8 +288,11 @@ export class PostgresProvider implements Provider {
          ON CONFLICT (flag_variant_id) DO UPDATE SET last_evaluated_at = GREATEST(fe.last_evaluated_at, now())`,
         [ids],
       );
-    } catch {
+    } catch (err) {
       for (const id of ids) this.evaluatedVariantIds.add(id);
+      this.events.emit(ProviderEvents.Stale, {
+        message: `flush evaluations failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
     }
   }
 }
