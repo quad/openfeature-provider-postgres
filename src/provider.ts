@@ -135,7 +135,7 @@ export class PostgresProvider implements Provider {
       changed = await this.loadFlags();
     } catch (err) {
       this.events.emit(ProviderEvents.Stale, {
-        message: err instanceof Error ? err.message : String(err),
+        message: `${err}`,
       });
       return;
     }
@@ -291,7 +291,7 @@ export class PostgresProvider implements Provider {
     } catch (err) {
       for (const id of ids) this.evaluatedVariantIds.add(id);
       this.events.emit(ProviderEvents.Stale, {
-        message: `flush evaluations failed: ${err instanceof Error ? err.message : String(err)}`,
+        message: `flush evaluations failed: ${err}`,
       });
     }
   }
