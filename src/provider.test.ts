@@ -670,12 +670,7 @@ describe("evaluation tracking", () => {
       ]);
 
       const getListenerClient = interceptListenerClient(pool);
-
-      await using stack = new AsyncDisposableStack();
-      const provider = stack.adopt(
-        new PostgresProvider({ pool, jitter: false }),
-        (p) => p.onClose(),
-      );
+      const provider = new PostgresProvider({ pool, jitter: false });
       await provider.initialize();
       await provider.resolveBooleanEvaluation("tracked", false, {}, logger);
 
@@ -693,10 +688,11 @@ describe("evaluation tracking", () => {
         { name: "on", value: "true" },
       ]);
       await deadline(changed, 2_000);
-      // flushEvaluations runs after performSync emits ConfigurationChanged
-      await delay(100);
 
-      // Reconnect triggers a sync flush
+      // Close without evaluating again — if the row exists, it was flushed
+      // during the reconnect sync (close-time flush has nothing left).
+      await provider.onClose();
+
       const { rows } = await pool.query(
         "SELECT count(*) as n FROM openfeature.flag_evaluations",
       );
