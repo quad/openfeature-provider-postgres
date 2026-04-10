@@ -51,6 +51,7 @@ export class PostgresProvider implements Provider {
   private evaluatedVariantIds = new Set<number>();
   private lastResultHash = NaN;
   private readonly jitterEnabled: boolean;
+  private readonly periodicMs: number;
   private readonly pool: pg.Pool;
   private readonly schema: string;
   private readonly stopSignal = createSignal<"stop">();
@@ -59,6 +60,9 @@ export class PostgresProvider implements Provider {
 
   constructor(options: PostgresProviderOptions) {
     this.jitterEnabled = options.jitter ?? true;
+    this.periodicMs = this.jitterEnabled
+      ? jitter(PERIODIC_SYNC_MAX_MS)
+      : PERIODIC_SYNC_MAX_MS;
     this.pool = options.pool;
     this.schema = options.schema ?? DEFAULT_SCHEMA;
   }
@@ -96,13 +100,10 @@ export class PostgresProvider implements Provider {
 
     const sleep = (ms: number) =>
       delay(ms, { signal: timers.signal, persistent: false }).catch(() => {});
-    const periodicMs = this.jitterEnabled
-      ? jitter(PERIODIC_SYNC_MAX_MS)
-      : PERIODIC_SYNC_MAX_MS;
 
     while (true) {
       const reason = await Promise.race([
-        sleep(periodicMs).then(() => "periodic" as const),
+        sleep(this.periodicMs).then(() => "periodic" as const),
         this.syncSignal.promise.then(async (r) => {
           if (r === "notify" && this.jitterEnabled) {
             await sleep(jitter(NOTIFY_DELAY_MAX_MS));
