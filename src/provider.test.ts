@@ -25,7 +25,7 @@ async function withProvider(
   fn: (pool: pg.Pool, provider: PostgresProvider) => Promise<void>,
 ) {
   await withDb(async (pool) => {
-    const provider = new PostgresProvider({ pool });
+    const provider = new PostgresProvider({ pool, jitter: false });
     try {
       await fn(pool, provider);
     } finally {
@@ -416,7 +416,7 @@ describe("lifecycle", () => {
   it("initialize fails if schema is missing", () =>
     // Deliberately skip schema — syncCache will fail
     withDb(async (pool) => {
-      const provider = new PostgresProvider({ pool });
+      const provider = new PostgresProvider({ pool, jitter: false });
       await assertRejects(() => provider.initialize(), Error);
       await provider.onClose();
     }, { applySchema: false }));
@@ -451,7 +451,7 @@ describe("sync", () => {
 
       await using stack = new AsyncDisposableStack();
       const provider = stack.adopt(
-        new PostgresProvider({ pool }),
+        new PostgresProvider({ pool, jitter: false }),
         (p) => p.onClose(),
       );
       await provider.initialize();
@@ -475,7 +475,7 @@ describe("sync", () => {
           () => resolve(),
         );
       });
-      await deadline(changed, 5_000);
+      await deadline(changed, 1_000);
 
       // Provider should work after reconnection
       const result = await provider.resolveBooleanEvaluation(
@@ -491,7 +491,7 @@ describe("sync", () => {
     withDb(async (pool) => {
       const getListenerClient = interceptListenerClient(pool);
 
-      const provider = new PostgresProvider({ pool });
+      const provider = new PostgresProvider({ pool, jitter: false });
       await provider.initialize();
 
       // Simulate connection loss to enter reconnecting state
@@ -515,7 +515,7 @@ describe("sync", () => {
 
       await using stack = new AsyncDisposableStack();
       const provider = stack.adopt(
-        new PostgresProvider({ pool: wrappedPool }),
+        new PostgresProvider({ pool: wrappedPool, jitter: false }),
         (p) => p.onClose(),
       );
       await provider.initialize();
@@ -527,7 +527,7 @@ describe("sync", () => {
 
       // Trigger onNotification path via a direct NOTIFY
       await pool.query("NOTIFY openfeature_flag_change");
-      await deadline(stale, 5_000);
+      await deadline(stale, 1_000);
     }));
 
   it("skips ConfigurationChanged when unchanged", () =>
@@ -538,7 +538,7 @@ describe("sync", () => {
 
       await using stack = new AsyncDisposableStack();
       const provider = stack.adopt(
-        new PostgresProvider({ pool }),
+        new PostgresProvider({ pool, jitter: false }),
         (p) => p.onClose(),
       );
       await provider.initialize();
@@ -551,7 +551,7 @@ describe("sync", () => {
       // Trigger a sync via NOTIFY without changing any data — cache is identical,
       // so ConfigurationChanged must not fire.
       await pool.query("NOTIFY openfeature_flag_change");
-      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
 
       assertStrictEquals(
         changeCount,
@@ -568,7 +568,7 @@ describe("evaluation tracking", () => {
         { name: "on", value: "true" },
       ]);
 
-      const provider = new PostgresProvider({ pool });
+      const provider = new PostgresProvider({ pool, jitter: false });
       await provider.initialize();
       await provider.resolveBooleanEvaluation("tracked", false, {}, logger);
       await provider.onClose();
@@ -590,7 +590,7 @@ describe("evaluation tracking", () => {
         { name: "on", value: "true" },
       ]);
 
-      const first_provider = new PostgresProvider({ pool });
+      const first_provider = new PostgresProvider({ pool, jitter: false });
       await first_provider.initialize();
       await first_provider.resolveBooleanEvaluation(
         "repeat",
@@ -609,7 +609,7 @@ describe("evaluation tracking", () => {
 
       await delay(10);
 
-      const second_provider = new PostgresProvider({ pool });
+      const second_provider = new PostgresProvider({ pool, jitter: false });
       await second_provider.initialize();
       await second_provider.resolveBooleanEvaluation(
         "repeat",
@@ -635,7 +635,7 @@ describe("evaluation tracking", () => {
         { name: "on", value: "true", weight: 0 },
       ]);
 
-      const provider = new PostgresProvider({ pool });
+      const provider = new PostgresProvider({ pool, jitter: false });
       await provider.initialize();
       await provider.resolveBooleanEvaluation("off-flag", false, {}, logger);
       await provider.onClose();
@@ -652,7 +652,7 @@ describe("evaluation tracking", () => {
         { name: "on", value: "true" },
       ], { enabled: false });
 
-      const provider = new PostgresProvider({ pool });
+      const provider = new PostgresProvider({ pool, jitter: false });
       await provider.initialize();
       await provider.resolveBooleanEvaluation("off-flag", false, {}, logger);
       await provider.onClose();
@@ -665,7 +665,7 @@ describe("evaluation tracking", () => {
 
   it("no-ops when no flags were evaluated", () =>
     withDb(async (pool) => {
-      const provider = new PostgresProvider({ pool });
+      const provider = new PostgresProvider({ pool, jitter: false });
       await provider.initialize();
       await provider.onClose();
 

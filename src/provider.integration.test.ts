@@ -11,7 +11,7 @@ Deno.test("end-to-end flag change via NOTIFY", () =>
       { name: "off", value: "false", weight: 0 },
     ]);
 
-    const provider = new PostgresProvider({ pool });
+    const provider = new PostgresProvider({ pool, jitter: false });
     await OpenFeature.setProviderAndWait("test", provider);
     const client = OpenFeature.getClient("test");
 
@@ -35,7 +35,7 @@ Deno.test("end-to-end flag change via NOTIFY", () =>
     `);
     await pool.query("COMMIT");
 
-    await deadline(changed, 5_000);
+    await deadline(changed, 1_000);
 
     // Evaluate updated value (only 'off' has weight → false)
     const updated = await client.getBooleanValue("my-flag", true);
@@ -46,7 +46,7 @@ Deno.test("end-to-end flag change via NOTIFY", () =>
 
 Deno.test("onClose is idempotent", () =>
   withDb(async (pool) => {
-    const provider = new PostgresProvider({ pool });
+    const provider = new PostgresProvider({ pool, jitter: false });
     await provider.initialize();
 
     // Double close should not throw

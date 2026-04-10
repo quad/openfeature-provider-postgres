@@ -26,6 +26,7 @@ interface FlagData {
 export interface PostgresProviderOptions {
   pool: pg.Pool;
   schema?: string;
+  jitter?: boolean;
 }
 
 const DEFAULT_SCHEMA = "openfeature";
@@ -49,6 +50,7 @@ export class PostgresProvider implements Provider {
   private cache = new Map<string, FlagData>();
   private evaluatedVariantIds = new Set<number>();
   private lastResultHash = NaN;
+  private readonly jitterEnabled: boolean;
   private readonly pool: pg.Pool;
   private readonly schema: string;
   private readonly stopSignal = createSignal<"stop">();
@@ -56,6 +58,7 @@ export class PostgresProvider implements Provider {
   private done: Promise<void> | null = null;
 
   constructor(options: PostgresProviderOptions) {
+    this.jitterEnabled = options.jitter ?? true;
     this.pool = options.pool;
     this.schema = options.schema ?? DEFAULT_SCHEMA;
   }
@@ -92,13 +95,17 @@ export class PostgresProvider implements Provider {
     stack.defer(stopListener);
 
     const sleep = (ms: number) =>
-      delay(ms, { signal: timers.signal, persistent: false }).catch(() => {});
+      delay(this.jitterEnabled ? jitter(ms) : ms, {
+        signal: timers.signal,
+        persistent: false,
+      })
+        .catch(() => {});
 
     while (true) {
       const reason = await Promise.race([
-        sleep(jitter(PERIODIC_SYNC_MS)).then(() => "periodic" as const),
+        sleep(PERIODIC_SYNC_MS).then(() => "periodic" as const),
         this.syncSignal.promise.then(async (r) => {
-          if (r === "notify") await sleep(jitter(NOTIFY_SYNC_MS));
+          if (r === "notify" && this.jitterEnabled) await sleep(NOTIFY_SYNC_MS);
           return r;
         }),
         this.stopSignal.promise,
@@ -291,7 +298,9 @@ function createSignal<T = void>() {
   let { resolve, promise } = Promise.withResolvers<T>();
   return {
     fired: false,
-    get promise() { return promise; },
+    get promise() {
+      return promise;
+    },
     fire(value: T) {
       this.fired = true;
       resolve(value);
