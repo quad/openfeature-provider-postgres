@@ -26,7 +26,7 @@
     "@std/async": "jsr:@std/async@^1",
     "@std/testing": "jsr:@std/testing@^1",
     "exponential-backoff": "npm:exponential-backoff@^3.1.2",
-    "pg": "npm:pg@^8.13.0",
+    "pg": "npm:pg@^8.18.0",
     "xxh32": "npm:xxh32@^2.0.5"
   }
 }
