@@ -12,6 +12,7 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
+import { metrics } from "@opentelemetry/api";
 import { abortable } from "@std/async/abortable";
 import { delay } from "@std/async/delay";
 import { retry } from "@std/async/retry";
@@ -21,12 +22,12 @@ import { xxh32 } from "xxh32";
 interface FlagData {
   flagType: "boolean" | "string" | "number" | "object";
   enabled: boolean;
-  variants: { id: number; variant: string; value: unknown; weight: number }[];
+  variants: { variant: string; value: unknown; weight: number }[];
 }
 
 /** Options for {@linkcode PostgresProvider}. */
 export interface PostgresProviderOptions {
-  /** Connection pool used for flag queries and evaluation tracking. */
+  /** Connection pool used for flag queries. */
   pool: pg.Pool;
   /** Schema containing the flag tables. Defaults to `"openfeature"`. */
   schema?: string;
@@ -48,6 +49,12 @@ const NOTIFY_SYNC_MAX_MS = 1_000;
 // Reconnect: exponential backoff with full jitter, capped at this delay.
 const RECONNECT_MAX_MS = 30_000;
 
+const evaluationCounter = metrics
+  .getMeter("openfeature")
+  .createCounter("feature_flag.evaluation", {
+    description: "Number of flag evaluations",
+  });
+
 /**
  * PostgreSQL-backed OpenFeature provider.
  *
@@ -61,7 +68,6 @@ export class PostgresProvider implements Provider {
   readonly events: OpenFeatureEventEmitter = new OpenFeatureEventEmitter();
 
   private cache = new Map<string, FlagData>();
-  private evaluatedVariantIds = new Set<number>();
   private lastResultHash = NaN;
   private readonly jitter: (max: number) => number;
   private readonly periodicSyncMs: number;
@@ -97,9 +103,7 @@ export class PostgresProvider implements Provider {
         }),
     );
 
-    this.done = this.lifecycle()
-      .finally(() => this.flushEvaluations())
-      .finally(listenerDone);
+    this.done = this.lifecycle().finally(listenerDone);
   }
 
   async onClose(): Promise<void> {
@@ -127,7 +131,6 @@ export class PostgresProvider implements Provider {
       if (reason === "stop") break;
       if (reason === "notify") await sleep(this.jitter(NOTIFY_SYNC_MAX_MS));
       await this.refreshCache();
-      if (reason === "sync") await this.flushEvaluations();
     }
   }
 
@@ -218,7 +221,10 @@ export class PostgresProvider implements Provider {
       };
     }
 
-    this.evaluatedVariantIds.add(chosen.id);
+    evaluationCounter.add(1, {
+      "feature_flag.key": flagKey,
+      "feature_flag.variant": chosen.variant,
+    });
     const reason = context.targetingKey
       ? StandardResolutionReasons.SPLIT
       : StandardResolutionReasons.STATIC;
@@ -247,7 +253,7 @@ export class PostgresProvider implements Provider {
   private async loadFlags(): Promise<boolean> {
     const s = pg.escapeIdentifier(this.schema);
     const result = await this.pool.query(`
-      SELECT f.flag_key, f.flag_type, f.enabled, fv.id, fv.variant, fv.value, fv.weight
+      SELECT f.flag_key, f.flag_type, f.enabled, fv.variant, fv.value, fv.weight
       FROM ${s}.flags f
       JOIN ${s}.flag_variants fv USING (flag_key, flag_type)
       ORDER BY f.flag_key, fv.variant
@@ -266,7 +272,6 @@ export class PostgresProvider implements Provider {
         variants: [],
       }));
       flag.variants.push({
-        id: row.id,
         variant: row.variant,
         value: row.value,
         weight: row.weight,
@@ -277,26 +282,6 @@ export class PostgresProvider implements Provider {
     return true;
   }
 
-  private async flushEvaluations(): Promise<void> {
-    if (this.evaluatedVariantIds.size === 0) return;
-    const ids = [...this.evaluatedVariantIds];
-    this.evaluatedVariantIds.clear();
-    const s = pg.escapeIdentifier(this.schema);
-    try {
-      await this.pool.query(
-        `INSERT INTO ${s}.flag_evaluations AS fe (flag_variant_id)
-         SELECT fv.id FROM unnest($1::int[]) AS v
-         JOIN ${s}.flag_variants fv ON fv.id = v
-         ON CONFLICT (flag_variant_id) DO UPDATE SET last_evaluated_at = GREATEST(fe.last_evaluated_at, now())`,
-        [ids],
-      );
-    } catch (err) {
-      for (const id of ids) this.evaluatedVariantIds.add(id);
-      this.events.emit(ProviderEvents.Stale, {
-        message: `flush evaluations failed: ${err}`,
-      });
-    }
-  }
 }
 
 function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
