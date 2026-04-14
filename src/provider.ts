@@ -23,9 +23,13 @@ interface FlagData {
   variants: { id: number; variant: string; value: unknown; weight: number }[];
 }
 
+/** Options for {@linkcode PostgresProvider}. */
 export interface PostgresProviderOptions {
+  /** Connection pool used for flag queries and evaluation tracking. */
   pool: pg.Pool;
+  /** Schema containing the flag tables. Defaults to `"openfeature"`. */
   schema?: string;
+  /** Apply jitter to sync timers. Set to `false` for deterministic timing. */
   jitter?: boolean;
 }
 
