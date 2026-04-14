@@ -13,7 +13,7 @@ import {
   TypeMismatchError,
 } from "@openfeature/server-sdk";
 import { delay } from "@std/async/delay";
-import { backOff } from "exponential-backoff";
+import { retry } from "@std/async/retry";
 import pg from "pg";
 import { xxh32 } from "xxh32";
 
@@ -367,15 +367,15 @@ async function startNotifyListener(
 
       onConnectionLost();
       try {
-        s = await backOff(async () => {
+        s = await retry(async () => {
           const fresh = session();
           await fresh.next();
           return fresh;
         }, {
-          numOfAttempts: Infinity,
-          maxDelay: RECONNECT_MAX_MS,
-          jitter: "full",
-          retry: () => !stop.signaled,
+          maxAttempts: Infinity,
+          maxTimeout: RECONNECT_MAX_MS,
+          jitter: 1,
+          isRetriable: () => !stop.signaled,
         });
       } catch {
         break;
