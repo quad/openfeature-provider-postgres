@@ -281,7 +281,6 @@ export class PostgresProvider implements Provider {
     this.cache = grouped;
     return true;
   }
-
 }
 
 function getOrInsertComputed<K, V>(map: Map<K, V>, key: K, create: () => V): V {
