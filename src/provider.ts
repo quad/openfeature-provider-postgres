@@ -85,9 +85,10 @@ export class PostgresProvider implements Provider {
 
     await this.loadFlags();
 
-    const stopListener = await startNotifyListener(
+    const listenerDone = await startNotifyListener(
       this.pool,
       CHANNEL,
+      this.stop.signal,
       () => this.syncSignal.set("notify"),
       () => this.syncSignal.set("sync"),
       () =>
@@ -96,7 +97,9 @@ export class PostgresProvider implements Provider {
         }),
     );
 
-    this.done = this.lifecycle(stopListener);
+    this.done = this.lifecycle()
+      .finally(() => this.flushEvaluations())
+      .finally(listenerDone);
   }
 
   async onClose(): Promise<void> {
@@ -106,13 +109,7 @@ export class PostgresProvider implements Provider {
     await this.done;
   }
 
-  private async lifecycle(
-    stopListener: () => Promise<void>,
-  ): Promise<void> {
-    await using stack = new AsyncDisposableStack();
-    stack.defer(() => this.flushEvaluations());
-    stack.defer(stopListener);
-
+  private async lifecycle(): Promise<void> {
     const sleep = (ms: number) =>
       delay(ms, { signal: this.stop.signal, persistent: false }).catch(
         () => {},
@@ -336,12 +333,11 @@ function createEvent<T = void>() {
 async function startNotifyListener(
   pool: pg.Pool,
   channelName: string,
+  signal: AbortSignal,
   onNotification: () => void,
   onReconnect: () => void,
   onConnectionLost: () => void,
 ): Promise<() => Promise<void>> {
-  const stop = createEvent();
-
   async function* session() {
     const lost = createEvent();
     const c = await pool.connect();
@@ -351,7 +347,7 @@ async function startNotifyListener(
       c.on("end", () => lost.set());
       await c.query(`LISTEN ${pg.escapeIdentifier(channelName)}`);
       yield;
-      await Promise.race([lost.wait(), stop.wait()]);
+      await abortable(lost.wait(), signal).catch(() => {});
     } finally {
       c.release(true);
     }
@@ -363,7 +359,7 @@ async function startNotifyListener(
   async function lifecycle() {
     while (true) {
       await s.next();
-      if (stop.signaled) break;
+      if (signal.aborted) break;
 
       onConnectionLost();
       try {
@@ -375,7 +371,7 @@ async function startNotifyListener(
           maxAttempts: Infinity,
           maxTimeout: RECONNECT_MAX_MS,
           jitter: 1,
-          isRetriable: () => !stop.signaled,
+          signal,
         });
       } catch {
         break;
@@ -385,8 +381,5 @@ async function startNotifyListener(
   }
 
   const done = lifecycle();
-  return async () => {
-    stop.set();
-    await done;
-  };
+  return () => done;
 }
