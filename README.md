@@ -1,6 +1,8 @@
 # @quad/openfeature-provider-postgres
 
-A PostgreSQL-backed [OpenFeature](https://openfeature.dev/) provider for Deno.
+A PostgreSQL-backed [OpenFeature](https://openfeature.dev/) provider. Works with
+any runtime that supports [`pg`](https://www.npmjs.com/package/pg) (Node.js,
+Deno, Bun, etc.).
 
 ## How it works
 
