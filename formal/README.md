@@ -7,15 +7,10 @@ the TLC model checker.
 
 | Property | Formula | Meaning |
 |---|---|---|
-| ShutdownTermination | `stop_requested ~> lifecycle_done` | `onClose()` always resolves |
+| ShutdownTermination | `stop ~> (lifecycle_done /\ listener_done)` | `onClose()` always resolves (both loops exit) |
 | CacheFreshness | `[](<>(cache = db \/ stop))` | Cache catches up to DB (or provider shuts down) |
 | ReconnectLiveness | `(~connected /\ ~stop) ~> (connected \/ stop)` | LISTEN reconnects after loss |
-| FlushOnShutdown | `(pending /\ stop) ~> (flushed \/ done)` | Pending evals flushed at shutdown |
 | StaleOnDisconnect | `(~connected /\ ~stop) ~> (stale \/ stop)` | Stale event emitted on connection loss |
-
-FlushOnShutdown has a `\/ done` escape because the OpenFeature spec does not
-guarantee `resolve()` stops before `onClose()`
-([open-feature/spec#365](https://github.com/open-feature/spec/issues/365)).
 
 ## Running
 

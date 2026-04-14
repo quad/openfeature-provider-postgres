@@ -47,11 +47,6 @@ variables
                                 \* the first session before returning.
     listener_done = FALSE,      \* Has the listener loop exited?
 
-    \* --- Evaluation tracking ---
-    has_pending_evals = FALSE,  \* Are there unflushed evaluations?
-    evals_flushed = FALSE,      \* Were evals flushed at least once?
-                                \* (For verifying flush-on-close.)
-
     \* --- Events emitted (for checking properties) ---
     stale_emitted = FALSE,      \* Was ProviderEvents.Stale emitted?
     config_changed = FALSE;     \* Was ConfigurationChanged emitted?
@@ -64,13 +59,12 @@ variables
 \* ================================================================
 
 \* ================================================================
-\* LIFECYCLE: models the while(true) loop, provider.ts lines 119-131
+\* LIFECYCLE: models the while(true) loop, provider.ts lifecycle()
 \*
-\* The real code does Promise.race([timer, syncSignal, stopped]).
-\* We model this as a nondeterministic choice: at each iteration,
-\* the lifecycle can observe a periodic timeout, a sync signal, or
-\* a stop. This is sound because TLC explores ALL choices. If any
-\* ordering violates a property, TLC will find it.
+\* The real code does abortable(Promise.race([timer, syncSignal]), signal)
+\* with .catch(() => "stop"). We model this as nondeterministic choice:
+\* at each iteration, the lifecycle can observe a periodic timeout,
+\* a sync signal, or a stop. TLC explores ALL choices.
 \* ================================================================
 fair process Lifecycle = "lifecycle"
 \* "fair process" means TLC assumes WEAK FAIRNESS: if this process
@@ -81,7 +75,8 @@ begin
 LifecycleLoop:
     while ~stop_requested do
 
-        \* MODEL: Promise.race([timer, syncSignal.wait(), stopped])
+        \* MODEL: abortable(Promise.race([timer, syncSignal.wait()]), signal)
+        \*        .catch(() => "stop")
         \*
         \* "either ... or ..." is PlusCal nondeterministic choice.
         \* TLC will explore every branch at every loop iteration.
@@ -94,13 +89,6 @@ LifecycleLoop:
                 cache_version := db_version;
                 if cache_version # db_version then
                     config_changed := TRUE;
-                end if;
-
-            PeriodicFlush:
-                \* flushEvaluations (only on periodic sync)
-                if has_pending_evals then
-                    has_pending_evals := FALSE;
-                    evals_flushed := TRUE;
                 end if;
 
         or
@@ -134,26 +122,13 @@ LifecycleLoop:
                 cache_version := db_version;
 
         or
-            \* Branch 4: stop signal fires
-            \* Models: stopped.then(() => "stop")
+            \* Branch 4: abortable rejects (reason === "stop")
+            \* Models: .catch(() => "stop") followed by break
             await stop_requested;
 
         end either;
 
     end while;
-
-LifecycleCleanup:
-    \* Models: AsyncDisposableStack cleanup
-    \* stack.defer(() => this.flushEvaluations())
-    if has_pending_evals then
-        has_pending_evals := FALSE;
-        evals_flushed := TRUE;
-    end if;
-
-LifecycleStopListener:
-    \* stack.defer(stopListener): tells the listener to stop.
-    \* The listener checks stop_requested, which is already TRUE.
-    skip;
 
 LifecycleDone:
     lifecycle_done := TRUE;
@@ -161,11 +136,13 @@ LifecycleDone:
 end process;
 
 \* ================================================================
-\* LISTENER: models startNotifyListener(), provider.ts lines 332-388
+\* LISTENER: models startNotifyListener(), provider.ts
 \*
 \* Maintains a LISTEN connection. On connection loss, reconnects
-\* with backoff. On notification, fires syncSignal("notify").
+\* with retry(). On notification, fires syncSignal("notify").
 \* On reconnect, fires syncSignal("sync").
+\* The listener receives the AbortSignal directly — stop_requested
+\* models signal.aborted.
 \* ================================================================
 fair process Listener = "listener"
 begin
@@ -182,9 +159,9 @@ ListenerLoop:
                 stale_emitted := TRUE;
 
             Reconnect:
-                \* backOff() loop: either reconnect succeeds, or stop
-                \* is requested and retry() returns false causing backOff
-                \* to throw (caught by catch{}, then break).
+                \* retry() loop: either reconnect succeeds, or the
+                \* AbortSignal fires and retry() throws (caught by
+                \* catch{}, then break).
                 either
                     listener_connected := TRUE;
                 or
@@ -198,9 +175,9 @@ ListenerLoop:
                 sync_value := "sync";
 
         or
-            \* The listener also races against the stop signal.
-            \* The environment process handles NOTIFY directly
-            \* by setting sync_signaled with "notify".
+            \* The listener also races against the abort signal.
+            \* Models: abortable(lost.wait(), signal).catch(() => {})
+            \* followed by signal.aborted check.
             await stop_requested;
 
         end either;
@@ -216,7 +193,7 @@ end process;
 \*
 \* This process nondeterministically performs actions that the real
 \* world can do at any time: change DB flags, send NOTIFY, kill the
-\* connection, trigger evaluations, or request shutdown.
+\* connection, or request shutdown.
 \*
 \* It is NOT declared "fair": the environment has no obligation to
 \* do anything. A flag change might never happen. A NOTIFY might
@@ -250,11 +227,6 @@ EnvLoop:
             listener_connected := FALSE;
 
         or
-            \* --- Evaluation happens ---
-            \* Some caller invokes resolveBooleanEvaluation() etc.
-            has_pending_evals := TRUE;
-
-        or
             \* --- Shutdown requested ---
             \* Someone calls provider.onClose().
             stop_requested := TRUE;
@@ -271,14 +243,14 @@ end process;
 
 end algorithm; *)
 
-\* BEGIN TRANSLATION (chksum(pcal) = "xxxxxxxx" /\ chksum(tla) = "xxxxxxxx")
+\* BEGIN TRANSLATION - theass://of PlusCal will be inserted here
 VARIABLES pc, db_version, cache_version, sync_signaled, sync_value, 
           stop_requested, lifecycle_done, listener_connected, listener_done, 
-          has_pending_evals, evals_flushed, stale_emitted, config_changed
+          stale_emitted, config_changed
 
 vars == << pc, db_version, cache_version, sync_signaled, sync_value, 
            stop_requested, lifecycle_done, listener_connected, listener_done, 
-           has_pending_evals, evals_flushed, stale_emitted, config_changed >>
+           stale_emitted, config_changed >>
 
 ProcSet == {"lifecycle"} \cup {"listener"} \cup {"env"}
 
@@ -291,8 +263,6 @@ Init == (* Global variables *)
         /\ lifecycle_done = FALSE
         /\ listener_connected = TRUE
         /\ listener_done = FALSE
-        /\ has_pending_evals = FALSE
-        /\ evals_flushed = FALSE
         /\ stale_emitted = FALSE
         /\ config_changed = FALSE
         /\ pc = [self \in ProcSet |-> CASE self = "lifecycle" -> "LifecycleLoop"
@@ -308,11 +278,10 @@ LifecycleLoop == /\ pc["lifecycle"] = "LifecycleLoop"
                                   /\ pc' = [pc EXCEPT !["lifecycle"] = "ReconnectSync"]
                                \/ /\ stop_requested
                                   /\ pc' = [pc EXCEPT !["lifecycle"] = "LifecycleLoop"]
-                       ELSE /\ pc' = [pc EXCEPT !["lifecycle"] = "LifecycleCleanup"]
+                       ELSE /\ pc' = [pc EXCEPT !["lifecycle"] = "LifecycleDone"]
                  /\ UNCHANGED << db_version, cache_version, sync_signaled, 
                                  sync_value, stop_requested, lifecycle_done, 
                                  listener_connected, listener_done, 
-                                 has_pending_evals, evals_flushed, 
                                  stale_emitted, config_changed >>
 
 PeriodicSync == /\ pc["lifecycle"] = "PeriodicSync"
@@ -321,24 +290,11 @@ PeriodicSync == /\ pc["lifecycle"] = "PeriodicSync"
                       THEN /\ config_changed' = TRUE
                       ELSE /\ TRUE
                            /\ UNCHANGED config_changed
-                /\ pc' = [pc EXCEPT !["lifecycle"] = "PeriodicFlush"]
+                /\ pc' = [pc EXCEPT !["lifecycle"] = "LifecycleLoop"]
                 /\ UNCHANGED << db_version, sync_signaled, sync_value, 
                                 stop_requested, lifecycle_done, 
                                 listener_connected, listener_done, 
-                                has_pending_evals, evals_flushed, 
                                 stale_emitted >>
-
-PeriodicFlush == /\ pc["lifecycle"] = "PeriodicFlush"
-                 /\ IF has_pending_evals
-                       THEN /\ has_pending_evals' = FALSE
-                            /\ evals_flushed' = TRUE
-                       ELSE /\ TRUE
-                            /\ UNCHANGED << has_pending_evals, evals_flushed >>
-                 /\ pc' = [pc EXCEPT !["lifecycle"] = "LifecycleLoop"]
-                 /\ UNCHANGED << db_version, cache_version, sync_signaled, 
-                                 sync_value, stop_requested, lifecycle_done, 
-                                 listener_connected, listener_done, 
-                                 stale_emitted, config_changed >>
 
 NotifySync == /\ pc["lifecycle"] = "NotifySync"
               /\ /\ sync_signaled' = FALSE
@@ -346,8 +302,7 @@ NotifySync == /\ pc["lifecycle"] = "NotifySync"
               /\ pc' = [pc EXCEPT !["lifecycle"] = "NotifyRefresh"]
               /\ UNCHANGED << db_version, cache_version, stop_requested, 
                               lifecycle_done, listener_connected, 
-                              listener_done, has_pending_evals, evals_flushed, 
-                              stale_emitted, config_changed >>
+                              listener_done, stale_emitted, config_changed >>
 
 NotifyRefresh == /\ pc["lifecycle"] = "NotifyRefresh"
                  /\ cache_version' = db_version
@@ -359,7 +314,6 @@ NotifyRefresh == /\ pc["lifecycle"] = "NotifyRefresh"
                  /\ UNCHANGED << db_version, sync_signaled, sync_value, 
                                  stop_requested, lifecycle_done, 
                                  listener_connected, listener_done, 
-                                 has_pending_evals, evals_flushed, 
                                  stale_emitted >>
 
 ReconnectSync == /\ pc["lifecycle"] = "ReconnectSync"
@@ -368,8 +322,7 @@ ReconnectSync == /\ pc["lifecycle"] = "ReconnectSync"
                  /\ pc' = [pc EXCEPT !["lifecycle"] = "ReconnectRefresh"]
                  /\ UNCHANGED << db_version, cache_version, stop_requested, 
                                  lifecycle_done, listener_connected, 
-                                 listener_done, has_pending_evals, 
-                                 evals_flushed, stale_emitted, config_changed >>
+                                 listener_done, stale_emitted, config_changed >>
 
 ReconnectRefresh == /\ pc["lifecycle"] = "ReconnectRefresh"
                     /\ cache_version' = db_version
@@ -377,31 +330,7 @@ ReconnectRefresh == /\ pc["lifecycle"] = "ReconnectRefresh"
                     /\ UNCHANGED << db_version, sync_signaled, sync_value, 
                                     stop_requested, lifecycle_done, 
                                     listener_connected, listener_done, 
-                                    has_pending_evals, evals_flushed, 
                                     stale_emitted, config_changed >>
-
-LifecycleCleanup == /\ pc["lifecycle"] = "LifecycleCleanup"
-                    /\ IF has_pending_evals
-                          THEN /\ has_pending_evals' = FALSE
-                               /\ evals_flushed' = TRUE
-                          ELSE /\ TRUE
-                               /\ UNCHANGED << has_pending_evals, 
-                                               evals_flushed >>
-                    /\ pc' = [pc EXCEPT !["lifecycle"] = "LifecycleStopListener"]
-                    /\ UNCHANGED << db_version, cache_version, sync_signaled, 
-                                    sync_value, stop_requested, lifecycle_done, 
-                                    listener_connected, listener_done, 
-                                    stale_emitted, config_changed >>
-
-LifecycleStopListener == /\ pc["lifecycle"] = "LifecycleStopListener"
-                         /\ TRUE
-                         /\ pc' = [pc EXCEPT !["lifecycle"] = "LifecycleDone"]
-                         /\ UNCHANGED << db_version, cache_version, 
-                                         sync_signaled, sync_value, 
-                                         stop_requested, lifecycle_done, 
-                                         listener_connected, listener_done, 
-                                         has_pending_evals, evals_flushed, 
-                                         stale_emitted, config_changed >>
 
 LifecycleDone == /\ pc["lifecycle"] = "LifecycleDone"
                  /\ lifecycle_done' = TRUE
@@ -409,13 +338,10 @@ LifecycleDone == /\ pc["lifecycle"] = "LifecycleDone"
                  /\ UNCHANGED << db_version, cache_version, sync_signaled, 
                                  sync_value, stop_requested, 
                                  listener_connected, listener_done, 
-                                 has_pending_evals, evals_flushed, 
                                  stale_emitted, config_changed >>
 
-Lifecycle == LifecycleLoop \/ PeriodicSync \/ PeriodicFlush \/ NotifySync
-                \/ NotifyRefresh \/ ReconnectSync \/ ReconnectRefresh
-                \/ LifecycleCleanup \/ LifecycleStopListener
-                \/ LifecycleDone
+Lifecycle == LifecycleLoop \/ PeriodicSync \/ NotifySync \/ NotifyRefresh
+                \/ ReconnectSync \/ ReconnectRefresh \/ LifecycleDone
 
 ListenerLoop == /\ pc["listener"] = "ListenerLoop"
                 /\ IF ~stop_requested
@@ -427,7 +353,6 @@ ListenerLoop == /\ pc["listener"] = "ListenerLoop"
                 /\ UNCHANGED << db_version, cache_version, sync_signaled, 
                                 sync_value, stop_requested, lifecycle_done, 
                                 listener_connected, listener_done, 
-                                has_pending_evals, evals_flushed, 
                                 stale_emitted, config_changed >>
 
 EmitStale == /\ pc["listener"] = "EmitStale"
@@ -435,8 +360,7 @@ EmitStale == /\ pc["listener"] = "EmitStale"
              /\ pc' = [pc EXCEPT !["listener"] = "Reconnect"]
              /\ UNCHANGED << db_version, cache_version, sync_signaled, 
                              sync_value, stop_requested, lifecycle_done, 
-                             listener_connected, listener_done, 
-                             has_pending_evals, evals_flushed, config_changed >>
+                             listener_connected, listener_done, config_changed >>
 
 Reconnect == /\ pc["listener"] = "Reconnect"
              /\ \/ /\ listener_connected' = TRUE
@@ -446,8 +370,7 @@ Reconnect == /\ pc["listener"] = "Reconnect"
                    /\ UNCHANGED listener_connected
              /\ UNCHANGED << db_version, cache_version, sync_signaled, 
                              sync_value, stop_requested, lifecycle_done, 
-                             listener_done, has_pending_evals, evals_flushed, 
-                             stale_emitted, config_changed >>
+                             listener_done, stale_emitted, config_changed >>
 
 SignalSync == /\ pc["listener"] = "SignalSync"
               /\ /\ sync_signaled' = TRUE
@@ -455,16 +378,15 @@ SignalSync == /\ pc["listener"] = "SignalSync"
               /\ pc' = [pc EXCEPT !["listener"] = "ListenerLoop"]
               /\ UNCHANGED << db_version, cache_version, stop_requested, 
                               lifecycle_done, listener_connected, 
-                              listener_done, has_pending_evals, evals_flushed, 
-                              stale_emitted, config_changed >>
+                              listener_done, stale_emitted, config_changed >>
 
 ListenerDone == /\ pc["listener"] = "ListenerDone"
                 /\ listener_done' = TRUE
                 /\ pc' = [pc EXCEPT !["listener"] = "Done"]
                 /\ UNCHANGED << db_version, cache_version, sync_signaled, 
                                 sync_value, stop_requested, lifecycle_done, 
-                                listener_connected, has_pending_evals, 
-                                evals_flushed, stale_emitted, config_changed >>
+                                listener_connected, stale_emitted, 
+                                config_changed >>
 
 Listener == ListenerLoop \/ EmitStale \/ Reconnect \/ SignalSync
                \/ ListenerDone
@@ -475,29 +397,26 @@ EnvLoop == /\ pc["env"] = "EnvLoop"
                                   THEN /\ db_version' = db_version + 1
                                   ELSE /\ TRUE
                                        /\ UNCHANGED db_version
-                            /\ UNCHANGED <<sync_signaled, sync_value, stop_requested, listener_connected, has_pending_evals>>
+                            /\ UNCHANGED <<sync_signaled, sync_value, stop_requested, listener_connected>>
                          \/ /\ IF listener_connected
                                   THEN /\ /\ sync_signaled' = TRUE
                                           /\ sync_value' = "notify"
                                   ELSE /\ TRUE
                                        /\ UNCHANGED << sync_signaled, 
                                                        sync_value >>
-                            /\ UNCHANGED <<db_version, stop_requested, listener_connected, has_pending_evals>>
+                            /\ UNCHANGED <<db_version, stop_requested, listener_connected>>
                          \/ /\ listener_connected' = FALSE
-                            /\ UNCHANGED <<db_version, sync_signaled, sync_value, stop_requested, has_pending_evals>>
-                         \/ /\ has_pending_evals' = TRUE
-                            /\ UNCHANGED <<db_version, sync_signaled, sync_value, stop_requested, listener_connected>>
+                            /\ UNCHANGED <<db_version, sync_signaled, sync_value, stop_requested>>
                          \/ /\ stop_requested' = TRUE
-                            /\ UNCHANGED <<db_version, sync_signaled, sync_value, listener_connected, has_pending_evals>>
+                            /\ UNCHANGED <<db_version, sync_signaled, sync_value, listener_connected>>
                          \/ /\ TRUE
-                            /\ UNCHANGED <<db_version, sync_signaled, sync_value, stop_requested, listener_connected, has_pending_evals>>
+                            /\ UNCHANGED <<db_version, sync_signaled, sync_value, stop_requested, listener_connected>>
                       /\ pc' = [pc EXCEPT !["env"] = "EnvLoop"]
                  ELSE /\ pc' = [pc EXCEPT !["env"] = "Done"]
                       /\ UNCHANGED << db_version, sync_signaled, sync_value, 
-                                      stop_requested, listener_connected, 
-                                      has_pending_evals >>
+                                      stop_requested, listener_connected >>
            /\ UNCHANGED << cache_version, lifecycle_done, listener_done, 
-                           evals_flushed, stale_emitted, config_changed >>
+                           stale_emitted, config_changed >>
 
 Environment == EnvLoop
 
@@ -518,16 +437,12 @@ Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
 \* Liveness properties (see README.md for explanations)
 
-ShutdownTermination == stop_requested ~> lifecycle_done
+ShutdownTermination == stop_requested ~> (lifecycle_done /\ listener_done)
 
 CacheFreshness == [](<>(cache_version = db_version \/ stop_requested))
 
 ReconnectLiveness ==
     (~listener_connected /\ ~stop_requested) ~> (listener_connected \/ stop_requested)
-
-\* lifecycle_done disjunct: resolve() can race with onClose() (open-feature/spec#365)
-FlushOnShutdown ==
-    (has_pending_evals /\ stop_requested) ~> (evals_flushed \/ lifecycle_done)
 
 StaleOnDisconnect ==
     (~listener_connected /\ ~stop_requested) ~> (stale_emitted \/ stop_requested)
