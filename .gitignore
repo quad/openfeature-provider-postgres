@@ -3,3 +3,8 @@
 .*.swp
 .claude
 coverage
+formal/tla2tools.jar
+formal/states/
+formal/*.bin
+formal/*.old
+formal/*_TTrace_*.tla
