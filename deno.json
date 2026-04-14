@@ -13,7 +13,7 @@
     ]
   },
   "tasks": {
-    "ci": "deno task ci:fix && deno test --allow-read",
+    "ci": "deno task ci:fix && deno test --allow-read --frozen",
     "ci:fix": "deno fmt && deno lint --fix",
     "dev": "deno test --watch --allow-read"
   },
