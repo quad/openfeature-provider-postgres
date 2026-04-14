@@ -12,6 +12,7 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from "@openfeature/server-sdk";
+import { abortable } from "@std/async/abortable";
 import { delay } from "@std/async/delay";
 import { retry } from "@std/async/retry";
 import pg from "pg";
@@ -112,20 +113,19 @@ export class PostgresProvider implements Provider {
     stack.defer(() => this.flushEvaluations());
     stack.defer(stopListener);
 
-    const { promise: stopped, resolve: onStop } = Promise.withResolvers<void>();
-    this.stop.signal.addEventListener("abort", () => onStop());
-
     const sleep = (ms: number) =>
       delay(ms, { signal: this.stop.signal, persistent: false }).catch(
         () => {},
       );
 
     while (true) {
-      const reason = await Promise.race([
-        sleep(this.periodicSyncMs).then(() => "sync" as const),
-        this.syncSignal.wait(),
-        stopped.then(() => "stop" as const),
-      ]);
+      const reason = await abortable(
+        Promise.race([
+          sleep(this.periodicSyncMs).then(() => "sync" as const),
+          this.syncSignal.wait(),
+        ]),
+        this.stop.signal,
+      ).catch(() => "stop" as const);
       this.syncSignal.reset();
       if (reason === "stop") break;
       if (reason === "notify") await sleep(this.jitter(NOTIFY_SYNC_MAX_MS));
