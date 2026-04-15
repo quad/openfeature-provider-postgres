@@ -18,6 +18,16 @@ round-trip:
 Each provider instance holds one dedicated connection from the pool for
 `LISTEN`. Size your pool accordingly.
 
+```mermaid
+graph LR
+    Provider["PostgresProvider\n(in-memory cache)"]
+    PG["PostgreSQL"]
+
+    Provider -- "load all flags" --> PG
+    PG -. "NOTIFY on change" .-> Provider
+    Provider -. "periodic sync" .-> PG
+```
+
 ## Pool configuration
 
 Set `statement_timeout` on your pool to prevent hung queries from blocking the
