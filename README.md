@@ -6,8 +6,8 @@ Deno, Bun, etc.).
 
 ## How it works
 
-Flags are served from an in-memory cache using a refresh-ahead pattern —
-the cache is proactively updated so evaluations never block on a database
+Flags are served from an in-memory cache using a refresh-ahead pattern — the
+cache is proactively updated so evaluations never block on a database
 round-trip:
 
 1. **LISTEN/NOTIFY** — schema triggers send a Postgres notification on every
