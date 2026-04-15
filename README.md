@@ -6,7 +6,9 @@ Deno, Bun, etc.).
 
 ## How it works
 
-Flags are cached in memory. The cache is refreshed in two ways:
+Flags are served from an in-memory cache using a refresh-ahead pattern —
+the cache is proactively updated so evaluations never block on a database
+round-trip:
 
 1. **LISTEN/NOTIFY** — schema triggers send a Postgres notification on every
    flag change; the provider re-syncs immediately (debounced).
