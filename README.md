@@ -20,12 +20,22 @@ Each provider instance holds one dedicated connection from the pool for
 
 ```mermaid
 graph LR
-    Provider["PostgresProvider\n(in-memory cache)"]
+    Start@{ shape: sm-circ }
+    Start -- "resolve" --> Provider
+
+    subgraph Provider["PostgresProvider"]
+        direction TB
+        Listener["NOTIFY Listener"]
+        Timer["Periodic Timer"]
+        Cache["Cache\n(in-memory)"]
+    end
     PG["PostgreSQL"]
 
-    Provider -- "load all flags" --> PG
-    PG -. "NOTIFY on change" .-> Provider
-    Provider -. "periodic sync" .-> PG
+    Cache -- "load all flags" --> PG
+    Timer -. "sync" .-> Cache
+    Listener -. "LISTEN" .-> PG
+        -. "NOTIFY on change" .-> Listener
+        -. "sync" .-> Cache
 ```
 
 ## Pool configuration
