@@ -1,5 +1,7 @@
 # @quad/openfeature-provider-postgres
 
+[![JSR Version](https://img.shields.io/jsr/v/%40quad/openfeature-provider-postgres)](https://jsr.io/@quad/openfeature-provider-postgres)
+
 A PostgreSQL-backed [OpenFeature](https://openfeature.dev/) provider. Works with
 any runtime that supports [`pg`](https://www.npmjs.com/package/pg) (Node.js,
 Deno, Bun, etc.).
