@@ -255,7 +255,7 @@ export class PostgresProvider implements Provider {
     const result = await this.pool.query(`
       SELECT f.flag_key, f.flag_type, f.enabled, fv.variant, fv.value, fv.weight
       FROM ${s}.flags f
-      JOIN ${s}.flag_variants fv USING (flag_key, flag_type)
+      JOIN ${s}.flag_variants fv USING (flag_key)
       ORDER BY f.flag_key, fv.variant
     `);
 
