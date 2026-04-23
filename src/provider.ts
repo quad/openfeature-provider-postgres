@@ -323,15 +323,15 @@ async function startNotifyListener(
   onConnectionLost: () => void,
 ): Promise<() => Promise<void>> {
   async function* session() {
-    const lost = createEvent();
+    const lost = Promise.withResolvers<void>();
     const c = await pool.connect();
     try {
       c.on("notification", onNotification);
-      c.on("error", () => lost.set());
-      c.on("end", () => lost.set());
+      c.on("error", () => lost.resolve());
+      c.on("end", () => lost.resolve());
       await c.query(`LISTEN ${pg.escapeIdentifier(channelName)}`);
       yield;
-      await abortable(lost.wait(), signal).catch(() => {});
+      await abortable(lost.promise, signal).catch(() => {});
     } finally {
       c.release(true);
     }
