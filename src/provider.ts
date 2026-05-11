@@ -19,10 +19,17 @@ import { retry } from "@std/async/retry";
 import pg from "pg";
 import { xxh32 } from "xxh32";
 
+interface Variant {
+  variant: string;
+  value: unknown;
+  weight: number;
+}
+
 interface FlagData {
   flagType: "boolean" | "string" | "number" | "object";
   enabled: boolean;
-  variants: { variant: string; value: unknown; weight: number }[];
+  // Keyed by subject; the null key is the flag-wide default cohort.
+  cohorts: Map<string | null, Variant[]>;
 }
 
 /** Options for {@linkcode PostgresProvider}. */
@@ -209,9 +216,28 @@ export class PostgresProvider implements Provider {
       );
     }
 
+    // Per-subject cohort first; fall through to the default below.
+    if (context.targetingKey !== undefined) {
+      const cohort = flag.cohorts.get(context.targetingKey);
+      const matched = cohort
+        ? this.pickVariant(cohort, flagKey, context.targetingKey)
+        : null;
+      if (matched) {
+        evaluationCounter.add(1, {
+          "feature_flag.key": flagKey,
+          "feature_flag.variant": matched.variant,
+        });
+        return {
+          value: matched.value as T,
+          variant: matched.variant,
+          reason: StandardResolutionReasons.TARGETING_MATCH,
+        };
+      }
+    }
+
     const chosen = this.pickVariant(
+      flag.cohorts.get(null) ?? [],
       flagKey,
-      flag,
       context.targetingKey ?? flagKey,
     );
     if (!chosen) {
@@ -231,31 +257,15 @@ export class PostgresProvider implements Provider {
     return { value: chosen.value as T, variant: chosen.variant, reason };
   }
 
-  private pickVariant(
-    flagKey: string,
-    flag: FlagData,
-    targetingKey: string,
-  ): FlagData["variants"][number] | null {
-    const total = flag.variants.reduce((sum, v) => sum + v.weight, 0);
-    if (total === 0) return null;
-
-    const hash = xxh32(`${targetingKey}\0${flagKey}`);
-    const bucket = hash % total;
-
-    let cumulative = 0;
-    for (const v of flag.variants) {
-      cumulative += v.weight;
-      if (bucket < cumulative) return v;
-    }
-    return flag.variants[flag.variants.length - 1];
-  }
-
   private async loadFlags(): Promise<boolean> {
     const s = pg.escapeIdentifier(this.schema);
     const result = await this.pool.query(`
-      SELECT f.flag_key, f.flag_type, f.enabled, fv.variant, fv.value, fv.weight
+      SELECT f.flag_key, f.flag_type, f.enabled,
+             t.subject, fv.variant, fv.value, t.weight
       FROM ${s}.flags f
-      JOIN ${s}.flag_variants fv USING (flag_key)
+      LEFT JOIN ${s}.flag_targeting t USING (flag_key)
+      LEFT JOIN ${s}.flag_variants fv
+        ON fv.flag_key = t.flag_key AND fv.variant = t.variant
       ORDER BY f.flag_key, fv.variant
     `);
 
@@ -264,14 +274,14 @@ export class PostgresProvider implements Provider {
     this.lastResultHash = resultHash;
 
     const grouped = new Map<string, FlagData>();
-
     for (const row of result.rows) {
       const flag = getOrInsertComputed(grouped, row.flag_key, () => ({
         flagType: row.flag_type,
         enabled: row.enabled,
-        variants: [],
+        cohorts: new Map<string | null, Variant[]>(),
       }));
-      flag.variants.push({
+      if (row.variant === null) continue;
+      getOrInsertComputed(flag.cohorts, row.subject, () => []).push({
         variant: row.variant,
         value: row.value,
         weight: row.weight,
@@ -280,6 +290,25 @@ export class PostgresProvider implements Provider {
 
     this.cache = grouped;
     return true;
+  }
+
+  private pickVariant(
+    variants: Variant[],
+    flagKey: string,
+    targetingKey: string,
+  ): Variant | null {
+    const total = variants.reduce((sum, v) => sum + v.weight, 0);
+    if (total === 0) return null;
+
+    const hash = xxh32(`${targetingKey}\0${flagKey}`);
+    const bucket = hash % total;
+
+    let cumulative = 0;
+    for (const v of variants) {
+      cumulative += v.weight;
+      if (bucket < cumulative) return v;
+    }
+    throw new Error("unreachable: bucket < total guarantees a match");
   }
 }
 
@@ -296,9 +325,6 @@ function createEvent<T = void>() {
   let signaled = false;
   let { resolve, promise } = Promise.withResolvers<T>();
   return {
-    get signaled() {
-      return signaled;
-    },
     wait() {
       return promise;
     },

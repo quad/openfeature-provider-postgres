@@ -24,14 +24,14 @@ Deno.test("end-to-end flag change via NOTIFY", () =>
       client.addHandler(ProviderEvents.ConfigurationChanged, () => resolve());
     });
 
-    // Swap weights in a single transaction so NOTIFY fires once
-    // and the provider never sees an intermediate state.
+    // Swap weights in the default cohort in a single transaction so
+    // NOTIFY fires once and the provider never sees an intermediate state.
     await pool.query("BEGIN");
     await pool.query(`
-      UPDATE openfeature.flag_variants SET weight = 0 WHERE flag_key = 'my-flag' AND variant = 'on'
+      UPDATE openfeature.flag_targeting SET weight = 0 WHERE flag_key = 'my-flag' AND subject IS NULL AND variant = 'on'
     `);
     await pool.query(`
-      UPDATE openfeature.flag_variants SET weight = 1 WHERE flag_key = 'my-flag' AND variant = 'off'
+      UPDATE openfeature.flag_targeting SET weight = 1 WHERE flag_key = 'my-flag' AND subject IS NULL AND variant = 'off'
     `);
     await pool.query("COMMIT");
 

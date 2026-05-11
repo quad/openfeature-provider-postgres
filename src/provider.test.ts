@@ -14,7 +14,12 @@ import {
 import { describe, it } from "@std/testing/bdd";
 import { deadline } from "@std/async/deadline";
 import type pg from "pg";
-import { insertFlag, withDb } from "./pglite-helper.test.ts";
+import {
+  clearTargeting,
+  insertFlag,
+  setTargeting,
+  withDb,
+} from "./pglite-helper.test.ts";
 import { PostgresProvider } from "./provider.ts";
 
 const logger = new DefaultLogger();
@@ -50,73 +55,57 @@ function interceptListenerClient(pool: pg.Pool) {
 }
 
 describe("flag resolution", () => {
-  it("resolves boolean flags", () =>
-    withProvider(async (pool, provider) => {
-      await insertFlag(pool, "bool-flag", "boolean", [{
-        name: "on",
-        value: "true",
-      }]);
-      await provider.initialize();
-      const result = await provider.resolveBooleanEvaluation(
-        "bool-flag",
-        false,
-        {},
-        logger,
-      );
-      assertStrictEquals(result.value, true);
-      assertStrictEquals(result.variant, "on");
-    }));
+  // One row per OpenFeature value type. `value` is the JSONB literal
+  // inserted into flag_variants; `expected` is the value the resolver
+  // must return after JSONB decode.
+  const typeCases = [
+    {
+      type: "boolean" as const,
+      value: "true",
+      expected: true,
+      default: false,
+      resolve: (p: PostgresProvider, k: string) =>
+        p.resolveBooleanEvaluation(k, false, {}, logger),
+    },
+    {
+      type: "string" as const,
+      value: '"Hello, world!"',
+      expected: "Hello, world!",
+      default: "",
+      resolve: (p: PostgresProvider, k: string) =>
+        p.resolveStringEvaluation(k, "", {}, logger),
+    },
+    {
+      type: "number" as const,
+      value: "100",
+      expected: 100,
+      default: 0,
+      resolve: (p: PostgresProvider, k: string) =>
+        p.resolveNumberEvaluation(k, 0, {}, logger),
+    },
+    {
+      type: "object" as const,
+      value: '{"theme": "dark", "limit": 10}',
+      expected: { theme: "dark", limit: 10 },
+      default: {},
+      resolve: (p: PostgresProvider, k: string) =>
+        p.resolveObjectEvaluation(k, {}, {}, logger),
+    },
+  ];
 
-  it("resolves string flags", () =>
-    withProvider(async (pool, provider) => {
-      await insertFlag(pool, "greeting", "string", [{
-        name: "hello",
-        value: '"Hello, world!"',
-      }]);
-      await provider.initialize();
-      const result = await provider.resolveStringEvaluation(
-        "greeting",
-        "",
-        {},
-        logger,
-      );
-      assertStrictEquals(result.value, "Hello, world!");
-      assertStrictEquals(result.variant, "hello");
-    }));
-
-  it("resolves number flags", () =>
-    withProvider(async (pool, provider) => {
-      await insertFlag(pool, "rate-limit", "number", [{
-        name: "default",
-        value: "100",
-      }]);
-      await provider.initialize();
-      const result = await provider.resolveNumberEvaluation(
-        "rate-limit",
-        0,
-        {},
-        logger,
-      );
-      assertStrictEquals(result.value, 100);
-      assertStrictEquals(result.variant, "default");
-    }));
-
-  it("resolves object flags", () =>
-    withProvider(async (pool, provider) => {
-      await insertFlag(pool, "config", "object", [{
-        name: "v1",
-        value: '{"theme": "dark", "limit": 10}',
-      }]);
-      await provider.initialize();
-      const result = await provider.resolveObjectEvaluation(
-        "config",
-        {},
-        {},
-        logger,
-      );
-      assertEquals(result.value, { theme: "dark", limit: 10 });
-      assertStrictEquals(result.variant, "v1");
-    }));
+  for (const tc of typeCases) {
+    it(`resolves ${tc.type} flags`, () =>
+      withProvider(async (pool, provider) => {
+        await insertFlag(pool, `${tc.type}-flag`, tc.type, [{
+          name: "v",
+          value: tc.value,
+        }]);
+        await provider.initialize();
+        const result = await tc.resolve(provider, `${tc.type}-flag`);
+        assertEquals(result.value, tc.expected);
+        assertStrictEquals(result.variant, "v");
+      }));
+  }
 
   it("all-zero-weight flag returns default value", () =>
     withProvider(async (pool, provider) => {
@@ -230,26 +219,10 @@ describe("error handling", () => {
 });
 
 describe("rollouts", () => {
-  it("returns SPLIT reason with targeting key", () =>
-    withProvider(async (pool, provider) => {
-      await insertFlag(pool, "ab-test", "string", [
-        { name: "control", value: '"Control"', weight: 50 },
-        { name: "treatment", value: '"Treatment"', weight: 50 },
-      ]);
-
-      await provider.initialize();
-
-      const result = await provider.resolveStringEvaluation(
-        "ab-test",
-        "",
-        { targetingKey: "user-123" },
-        logger,
-      );
-      assertStrictEquals(result.reason, StandardResolutionReasons.SPLIT);
-      assert(["control", "treatment"].includes(result.variant ?? ""));
-    }));
-
-  it("is deterministic for the same targeting key", () =>
+  // Backwards-compat lock-in for the no-overrides path: each test here
+  // creates a flag without setTargeting(), so the weighted-hash path must
+  // still produce a SPLIT result identical to pre-overrides behavior.
+  it("SPLIT reason and deterministic for the same targeting key", () =>
     withProvider(async (pool, provider) => {
       await insertFlag(pool, "ab-test", "string", [
         { name: "control", value: '"Control"', weight: 50 },
@@ -266,6 +239,8 @@ describe("rollouts", () => {
           { targetingKey: "user-123" },
           logger,
         );
+        assertStrictEquals(r.reason, StandardResolutionReasons.SPLIT);
+        assert(["control", "treatment"].includes(r.variant ?? ""));
         results.add(r.variant ?? "");
       }
       assertStrictEquals(results.size, 1, "should be deterministic");
@@ -350,6 +325,207 @@ describe("rollouts", () => {
     }));
 });
 
+describe("targeting", () => {
+  it("single-variant pin returns TARGETING_MATCH", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "rollout", "string", [
+        { name: "a", value: '"A"', weight: 1 },
+        { name: "b", value: '"B"', weight: 0 },
+      ]);
+      await setTargeting(pool, "rollout", "string", "key-1", "b", 1);
+
+      await provider.initialize();
+
+      const result = await provider.resolveStringEvaluation(
+        "rollout",
+        "",
+        { targetingKey: "key-1" },
+        logger,
+      );
+      assertStrictEquals(result.value, "B");
+      assertStrictEquals(result.variant, "b");
+      assertStrictEquals(
+        result.reason,
+        StandardResolutionReasons.TARGETING_MATCH,
+      );
+    }));
+
+  it("override pin beats flag-wide weights; other keys fall through", () =>
+    withProvider(async (pool, provider) => {
+      // All flag-wide weight on 'a' — without the override 'a' always wins.
+      await insertFlag(pool, "rollout", "string", [
+        { name: "a", value: '"A"', weight: 100 },
+        { name: "b", value: '"B"', weight: 0 },
+      ]);
+      await setTargeting(pool, "rollout", "string", "key-1", "b", 1);
+
+      await provider.initialize();
+
+      const matched = await provider.resolveStringEvaluation(
+        "rollout",
+        "",
+        { targetingKey: "key-1" },
+        logger,
+      );
+      assertStrictEquals(matched.variant, "b");
+      assertStrictEquals(
+        matched.reason,
+        StandardResolutionReasons.TARGETING_MATCH,
+      );
+
+      const unmatched = await provider.resolveStringEvaluation(
+        "rollout",
+        "",
+        { targetingKey: "key-other" },
+        logger,
+      );
+      assertStrictEquals(unmatched.variant, "a");
+      assertStrictEquals(unmatched.reason, StandardResolutionReasons.SPLIT);
+    }));
+
+  it("weighted cohort: multi-variant override splits among its rows", () =>
+    withProvider(async (pool, provider) => {
+      // Flag-wide is 100% 'a'. Per-key cohort splits 50/50 between b and c.
+      await insertFlag(pool, "rollout", "string", [
+        { name: "a", value: '"A"', weight: 1 },
+        { name: "b", value: '"B"', weight: 0 },
+        { name: "c", value: '"C"', weight: 0 },
+      ]);
+      await setTargeting(pool, "rollout", "string", "key-1", "b", 50);
+      await setTargeting(pool, "rollout", "string", "key-1", "c", 50);
+
+      await provider.initialize();
+
+      // Resolution for key-1 is one of {b, c} but never 'a'; same key →
+      // deterministic single result.
+      const seen = new Set<string>();
+      for (let i = 0; i < 10; i++) {
+        const r = await provider.resolveStringEvaluation(
+          "rollout",
+          "",
+          { targetingKey: "key-1" },
+          logger,
+        );
+        assertStrictEquals(r.reason, StandardResolutionReasons.TARGETING_MATCH);
+        assert(
+          ["b", "c"].includes(r.variant ?? ""),
+          `expected b or c, got ${r.variant}`,
+        );
+        seen.add(r.variant ?? "");
+      }
+      assertStrictEquals(seen.size, 1, "deterministic for same targetingKey");
+    }));
+
+  it("disabled flag returns default even when an override would match", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "rollout", "string", [
+        { name: "a", value: '"A"' },
+        { name: "b", value: '"B"' },
+      ], { enabled: false });
+      await setTargeting(pool, "rollout", "string", "key-1", "b", 1);
+
+      await provider.initialize();
+
+      const result = await provider.resolveStringEvaluation(
+        "rollout",
+        "fallback",
+        { targetingKey: "key-1" },
+        logger,
+      );
+      assertStrictEquals(result.value, "fallback");
+      assertStrictEquals(result.reason, StandardResolutionReasons.DISABLED);
+      assertStrictEquals(result.variant, undefined);
+    }));
+
+  it("all-zero-weight cohort falls through to flag-wide hash", () =>
+    withProvider(async (pool, provider) => {
+      await insertFlag(pool, "rollout", "string", [
+        { name: "a", value: '"A"', weight: 1 },
+        { name: "b", value: '"B"', weight: 0 },
+      ]);
+      // Override row exists but with weight 0 — same DISABLED semantics
+      // as a zero-weight variants list at the flag level: no choice, fall
+      // through to the flag-wide weighted hash.
+      await setTargeting(pool, "rollout", "string", "key-1", "b", 0);
+
+      await provider.initialize();
+
+      const result = await provider.resolveStringEvaluation(
+        "rollout",
+        "",
+        { targetingKey: "key-1" },
+        logger,
+      );
+      assertStrictEquals(result.variant, "a");
+      assertStrictEquals(result.reason, StandardResolutionReasons.SPLIT);
+    }));
+
+  it("override propagates via NOTIFY without re-init", () =>
+    withDb(async (pool) => {
+      await insertFlag(pool, "rollout", "string", [
+        { name: "a", value: '"A"', weight: 1 },
+        { name: "b", value: '"B"', weight: 0 },
+      ]);
+
+      await using stack = new AsyncDisposableStack();
+      const provider = stack.adopt(
+        new PostgresProvider({ pool, jitter: false }),
+        (p) => p.onClose(),
+      );
+      await provider.initialize();
+
+      // Baseline: no override → weighted hash picks 'a'.
+      const before = await provider.resolveStringEvaluation(
+        "rollout",
+        "",
+        { targetingKey: "key-1" },
+        logger,
+      );
+      assertStrictEquals(before.variant, "a");
+
+      // Add an override; wait for cache to sync.
+      const added = new Promise<void>((resolve) => {
+        provider.events.addHandler(
+          ProviderEvents.ConfigurationChanged,
+          () => resolve(),
+        );
+      });
+      await setTargeting(pool, "rollout", "string", "key-1", "b", 1);
+      await deadline(added, 1_000);
+
+      const matched = await provider.resolveStringEvaluation(
+        "rollout",
+        "",
+        { targetingKey: "key-1" },
+        logger,
+      );
+      assertStrictEquals(matched.variant, "b");
+      assertStrictEquals(
+        matched.reason,
+        StandardResolutionReasons.TARGETING_MATCH,
+      );
+
+      // Clear override; weighted hash resumes.
+      const removed = new Promise<void>((resolve) => {
+        provider.events.addHandler(
+          ProviderEvents.ConfigurationChanged,
+          () => resolve(),
+        );
+      });
+      await clearTargeting(pool, "rollout", "key-1");
+      await deadline(removed, 1_000);
+
+      const after = await provider.resolveStringEvaluation(
+        "rollout",
+        "",
+        { targetingKey: "key-1" },
+        logger,
+      );
+      assertStrictEquals(after.variant, "a");
+      assertStrictEquals(after.reason, StandardResolutionReasons.SPLIT);
+    }));
+});
+
 describe("schema constraints", () => {
   const constraintCases = [
     {
@@ -358,7 +534,7 @@ describe("schema constraints", () => {
         `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('bool-flag', 'boolean', true)`,
       ],
       badSql:
-        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, weight) VALUES ('bool-flag', 'on', 'boolean', '"not-a-boolean"', 1)`,
+        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('bool-flag', 'on', 'boolean', '"not-a-boolean"')`,
       expectedError: "check",
     },
     {
@@ -367,7 +543,7 @@ describe("schema constraints", () => {
         `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('tags', 'object', true)`,
       ],
       badSql:
-        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, weight) VALUES ('tags', 'default', 'object', '["a", "b", "c"]', 1)`,
+        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('tags', 'default', 'object', '["a", "b", "c"]')`,
       expectedError: "check",
     },
     {
@@ -383,16 +559,47 @@ describe("schema constraints", () => {
         `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'boolean', true)`,
       ],
       badSql:
-        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, weight) VALUES ('my-flag', '', 'boolean', 'true', 1)`,
+        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', '', 'boolean', 'true')`,
       expectedError: "check",
     },
     {
-      name: "rejects negative weight",
+      name: "rejects targeting row referencing missing variant",
       setupSql: [
-        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'boolean', true)`,
+        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'string', true)`,
+        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', 'a', 'string', '"A"')`,
       ],
       badSql:
-        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value, weight) VALUES ('my-flag', 'on', 'boolean', 'true', -1)`,
+        `INSERT INTO openfeature.flag_targeting (flag_key, subject, flag_type, variant, weight) VALUES ('my-flag', 'k', 'string', 'nonexistent', 1)`,
+      expectedError: "foreign key",
+    },
+    {
+      name: "rejects targeting row with mismatched flag_type",
+      setupSql: [
+        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'string', true)`,
+        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', 'a', 'string', '"A"')`,
+      ],
+      badSql:
+        `INSERT INTO openfeature.flag_targeting (flag_key, subject, flag_type, variant, weight) VALUES ('my-flag', 'k', 'boolean', 'a', 1)`,
+      expectedError: "foreign key",
+    },
+    {
+      name: "rejects targeting row with negative weight",
+      setupSql: [
+        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'string', true)`,
+        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', 'a', 'string', '"A"')`,
+      ],
+      badSql:
+        `INSERT INTO openfeature.flag_targeting (flag_key, subject, flag_type, variant, weight) VALUES ('my-flag', 'k', 'string', 'a', -1)`,
+      expectedError: "check",
+    },
+    {
+      name: "rejects empty subject",
+      setupSql: [
+        `INSERT INTO openfeature.flags (flag_key, flag_type, enabled) VALUES ('my-flag', 'string', true)`,
+        `INSERT INTO openfeature.flag_variants (flag_key, variant, flag_type, value) VALUES ('my-flag', 'a', 'string', '"A"')`,
+      ],
+      badSql:
+        `INSERT INTO openfeature.flag_targeting (flag_key, subject, flag_type, variant, weight) VALUES ('my-flag', '', 'string', 'a', 1)`,
       expectedError: "check",
     },
   ];
