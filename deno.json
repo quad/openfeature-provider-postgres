@@ -1,6 +1,6 @@
 {
   "name": "@quad/openfeature-provider-postgres",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "license": "Apache-2.0",
   "exports": "./src/provider.ts",
   "publish": {
@@ -20,7 +20,6 @@
   },
   "imports": {
     "@electric-sql/pglite": "npm:@electric-sql/pglite@^0.3.0",
-
     "@middle-management/pglite-pg-adapter": "npm:@middle-management/pglite-pg-adapter@^0.0.4",
     "@openfeature/server-sdk": "npm:@openfeature/server-sdk@^1.13.0",
     "@opentelemetry/api": "npm:@opentelemetry/api@^1.9.0",
